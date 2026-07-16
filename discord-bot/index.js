@@ -7,11 +7,11 @@ const {
 
 const { joinVoiceChannel, getVoiceConnection, entersState, VoiceConnectionStatus } = require('@discordjs/voice');
 
-const TOKEN = 'MTUyNjk4MjA0Mzg1NzA1OTk4MQ.Gde-iq.po4Zgql9fHTX-h7vXlrNiMM5LFRknEOu4wgjx0';
-const GUILD_ID = '1467153107837255734';
-const CLIENT_ID = '1526982043857059981';
+const TOKEN = process.env.TOKEN;
+const GUILD_ID = process.env.GUILD_ID || '1467153107837255734';
+const CLIENT_ID = process.env.CLIENT_ID || '1526982043857059981';
 const PREFIX = ',';
-const OWNER_ID = '1451684769061535826';
+const OWNER_ID = process.env.OWNER_ID || '1451684769061535826';
 
 const db = require('./src/db');
 const snipe = require('./src/snipe');
