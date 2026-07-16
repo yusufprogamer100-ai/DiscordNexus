@@ -1651,9 +1651,15 @@ client.on('interactionCreate', async (interaction) => {
   if (interaction.isButton()) {
     if (interaction.customId.startsWith('panel_')) return handlePanelButton(interaction);
     if (interaction.customId === 'ticket_open') {
+      // Check for existing open ticket via DB
+      const existingTicket = db.prepare("SELECT channel_id FROM tickets WHERE guild_id = ? AND user_id = ? AND status = 'open'").get(interaction.guildId, interaction.user.id);
+      if (existingTicket) {
+        const existingChan = interaction.guild.channels.cache.get(existingTicket.channel_id);
+        if (existingChan) return interaction.reply({ content: `You already have an open ticket: ${existingChan}`, ephemeral: true });
+        // Channel was deleted, clean up DB
+        db.prepare('DELETE FROM tickets WHERE channel_id = ?').run(existingTicket.channel_id);
+      }
       const cfg = db.prepare('SELECT * FROM ticket_config WHERE guild_id = ?').get(interaction.guildId);
-      const existing = interaction.guild.channels.cache.find(c => c.name === `ticket-${interaction.user.id}`);
-      if (existing) return interaction.reply({ content: `You already have a ticket: ${existing}`, ephemeral: true });
       const perms = [
         { id: interaction.guild.roles.everyone.id, deny: [PermissionFlagsBits.ViewChannel] },
         { id: interaction.user.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] },
@@ -1663,7 +1669,7 @@ client.on('interactionCreate', async (interaction) => {
       let ticketChan;
       try {
         ticketChan = await interaction.guild.channels.create({
-          name: `ticket-${interaction.user.id}`,
+          name: `ticket-${interaction.user.username.toLowerCase().replace(/[^a-z0-9]/g, '')}-${interaction.user.discriminator}`,
           type: ChannelType.GuildText,
           parent: cfg?.category_id || undefined,
           permissionOverwrites: perms,
@@ -1674,11 +1680,13 @@ client.on('interactionCreate', async (interaction) => {
       db.prepare('INSERT OR REPLACE INTO tickets VALUES (?,?,?,?,?,?,?)').run(ticketChan.id, interaction.guildId, interaction.user.id, 'open', Date.now(), null, null);
       const ticketEmbed = new EmbedBuilder().setColor(0x2b2d31)
         .setAuthor({ name: interaction.user.username, iconURL: interaction.user.displayAvatarURL() })
-        .setDescription(`**Ticket Opened**\n${interaction.user} thank you for reaching out.\nSupport team will be with you shortly.\n\n\u2022 **User:** ${interaction.user.tag} (\`${interaction.user.id}\`)\n\u2022 **Opened:** <t:${Math.floor(Date.now() / 1000)}:R>`);
-      const closeBtn = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId('ticket_close').setLabel('\uD83D\uDD12 Close Ticket').setStyle(ButtonStyle.Danger),
+        .setDescription(`**Ticket Opened**\n${interaction.user}, thank you for reaching out.\nSupport will be with you shortly.\n\n\u2022 **User:** ${interaction.user.tag} (\`${interaction.user.id}\`)\n\u2022 **Opened:** <t:${Math.floor(Date.now() / 1000)}:R>`)
+        .setFooter({ text: 'Click the button below to close this ticket' });
+      const row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId('ticket_close').setLabel('Close Ticket').setStyle(ButtonStyle.Danger),
+        new ButtonBuilder().setCustomId('ticket_claim').setLabel('Claim').setStyle(ButtonStyle.Primary),
       );
-      await ticketChan.send({ content: `${interaction.user}`, embeds: [ticketEmbed], components: [closeBtn] });
+      await ticketChan.send({ content: `${interaction.user} ${cfg?.role_id ? `<@&${cfg.role_id}>` : ''}`, embeds: [ticketEmbed], components: [row] });
       await interaction.reply({ content: `Ticket created: ${ticketChan}`, ephemeral: true });
       return;
     }
@@ -1691,9 +1699,22 @@ client.on('interactionCreate', async (interaction) => {
         return interaction.reply({ content: 'Only the ticket owner or support can close this.', ephemeral: true });
       }
       db.prepare('UPDATE tickets SET status = ?, closed_by = ?, closed_at = ? WHERE channel_id = ?').run('closed', interaction.user.id, Date.now(), interaction.channelId);
-      const closeEmbed = new EmbedBuilder().setColor(0xCC3333).setDescription(`**Ticket Closed**\nTicket closed by ${interaction.user}.\nChannel will be deleted shortly.`);
+      const closeEmbed = new EmbedBuilder().setColor(0xCC3333)
+        .setDescription(`**Ticket Closed**\nClosed by ${interaction.user}\nChannel will be deleted shortly.`);
       await interaction.reply({ embeds: [closeEmbed] });
+      // DM the user
+      const owner = await client.users.fetch(ticket.user_id).catch(() => null);
+      if (owner) owner.send({ embeds: [smallEmbed(`Your ticket has been closed by ${interaction.user.tag}.`)], ephemeral: true }).catch(() => {});
       setTimeout(() => interaction.channel.delete().catch(() => {}), 10000);
+      return;
+    }
+    if (interaction.customId === 'ticket_claim') {
+      const ticket = db.prepare('SELECT * FROM tickets WHERE channel_id = ?').get(interaction.channelId);
+      if (!ticket || ticket.status !== 'open') return interaction.reply({ content: 'Ticket not open.', ephemeral: true });
+      const claimedBy = db.prepare('SELECT closed_by FROM tickets WHERE channel_id = ?').get(interaction.channelId);
+      if (claimedBy && claimedBy.closed_by) return interaction.reply({ content: 'Ticket already claimed.', ephemeral: true });
+      db.prepare('UPDATE tickets SET closed_by = ? WHERE channel_id = ?').run(interaction.user.id, interaction.channelId);
+      await interaction.reply({ embeds: [smallEmbed(`Ticket claimed by ${interaction.user}.`)] });
       return;
     }
     if (interaction.customId === 'giveaway_join') {
@@ -2519,32 +2540,16 @@ client.on('messageCreate', async (msg) => {
     if (!prefixCmd && content.includes(client.user.id)) {
       const prompt = content.replace(/<@!?\d+>/g, '').trim();
       if (prompt) {
+        if (msg.attachments.size > 0) {
+          await msg.reply({ embeds: [smallEmbed('This AI model does not support image input.')], allowedMentions: { repliedUser: false } });
+          return;
+        }
         await msg.channel.sendTyping();
         const reply = await askAI(aiCfg.provider, aiCfg.api_key, aiCfg.model || undefined, prompt);
         await msg.reply({ embeds: [smallEmbed(reply.slice(0, 1900))], allowedMentions: { repliedUser: false } });
-    return;
-  }
-
-  // ── Addword (prefix auto-reply) ──
-  if (cmd === 'addword') {
-    if (!modError(PermissionFlagsBits.ManageMessages)) return;
-    const trigger = args[0]?.toLowerCase();
-    const response = args.slice(1).join(' ');
-    if (trigger === 'list') {
-      const replies = db.prepare('SELECT trigger, response FROM auto_replies WHERE guild_id = ?').all(guild.id);
-      if (!replies.length) return msg.reply({ embeds: [smallEmbed('No auto-replies.')] });
-      return msg.reply({ embeds: [embed('Auto-Replies', replies.map(r => `\`${r.trigger}\` \u2192 ${r.response}`).join('\n'))] });
+        return;
+      }
     }
-    if ((trigger === 'remove' || trigger === 'del') && response) {
-      db.prepare('DELETE FROM auto_replies WHERE guild_id = ? AND trigger = ?').run(guild.id, response.toLowerCase());
-      return msg.reply({ embeds: [smallEmbed(`\u2705 Auto-reply \`${response}\` removed.`)] });
-    }
-    if (!trigger || trigger.length < 2 || !response) return msg.reply({ embeds: [errorEmbed('Usage: ,addword trigger response')] });
-    db.prepare('INSERT OR REPLACE INTO auto_replies VALUES (?,?,?)').run(guild.id, trigger, response);
-    await msg.reply({ embeds: [smallEmbed(`\u2705 Auto-reply added: \`${trigger}\``)] });
-    return;
-  }
-}
   }
 
   // ── Return if user has ManageMessages (bypass auto-mod) ──
