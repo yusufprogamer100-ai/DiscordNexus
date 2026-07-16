@@ -2051,7 +2051,7 @@ async function handleSlash(interaction) {
     db.prepare('INSERT OR REPLACE INTO afk VALUES (?,?,?,?)').run(interaction.guildId, interaction.user.id, reason, Date.now());
     const now = new Date();
     const timeStr = now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
-    await interaction.reply({ embeds: [new EmbedBuilder().setColor(0xCC3333).setDescription(`\uD83D\uDCA4 ${interaction.user} is now **AFK**: ${reason} \u2014 ${timeStr}`)], ephemeral: true });
+    await interaction.reply({ embeds: [new EmbedBuilder().setColor(0xCC3333).setDescription(`\uD83D\uDCA4 ${interaction.user} is now **AFK**: ${reason} \u2014 ${timeStr}`)] });
     return;
   }
 
@@ -2059,7 +2059,7 @@ async function handleSlash(interaction) {
     const btn = new ActionRowBuilder().addComponents(
       new ButtonBuilder().setCustomId('ticket_open').setLabel('\uD83C\uDFAB Open Ticket').setStyle(ButtonStyle.Primary),
     );
-    await interaction.reply({ embeds: [new EmbedBuilder().setColor(0x2b2d31).setTitle('Support Tickets').setDescription('Click the button below to open a support ticket.')], components: [btn], ephemeral: true });
+    await interaction.reply({ embeds: [new EmbedBuilder().setColor(0x2b2d31).setTitle('Support Tickets').setDescription('Click the button below to open a support ticket.')], components: [btn] });
     return;
   }
 
@@ -2203,7 +2203,7 @@ async function handleSlash(interaction) {
       `**Warns:** ${warns}`,
       `**Roles:** ${member ? member.roles.cache.filter(r => r.id !== interaction.guild.id).size : '-'}`,
     ];
-    await interaction.reply({ embeds: [new EmbedBuilder().setColor(0x2b2d31).setTitle('User Info').setDescription(lines.join('\n')).setThumbnail(user.displayAvatarURL())], ephemeral: true });
+    await interaction.reply({ embeds: [new EmbedBuilder().setColor(0x2b2d31).setTitle('User Info').setDescription(lines.join('\n')).setThumbnail(user.displayAvatarURL())] });
     return;
   }
 
@@ -2219,7 +2219,7 @@ async function handleSlash(interaction) {
       `**Boost Level:** ${guild.premiumTier}`,
       `**Created:** <t:${Math.floor(guild.createdTimestamp / 1000)}:R>`,
     ];
-    await interaction.reply({ embeds: [new EmbedBuilder().setColor(0x2b2d31).setTitle('Server Info').setDescription(lines.join('\n')).setThumbnail(guild.iconURL())], ephemeral: true });
+    await interaction.reply({ embeds: [new EmbedBuilder().setColor(0x2b2d31).setTitle('Server Info').setDescription(lines.join('\n')).setThumbnail(guild.iconURL())] });
     return;
   }
 
@@ -2361,7 +2361,7 @@ async function handleSlash(interaction) {
 
   if (cmd === 'avatar') {
     const user = interaction.options.getUser('user') || interaction.user;
-    await interaction.reply({ embeds: [new EmbedBuilder().setColor(0x2b2d31).setTitle(`${user.tag}'s Avatar`).setImage(user.displayAvatarURL({ size: 1024 }))], ephemeral: true });
+    await interaction.reply({ embeds: [new EmbedBuilder().setColor(0x2b2d31).setTitle(`${user.tag}'s Avatar`).setImage(user.displayAvatarURL({ size: 1024 }))] });
     return;
   }
 
@@ -2369,8 +2369,8 @@ async function handleSlash(interaction) {
     const user = interaction.options.getUser('user') || interaction.user;
     const fetched = await client.users.fetch(user.id, { force: true });
     const banner = fetched.bannerURL({ size: 1024 });
-    if (!banner) return interaction.reply({ embeds: [smallEmbed(`${user.tag} has no banner.`)], ephemeral: true });
-    await interaction.reply({ embeds: [new EmbedBuilder().setColor(0x2b2d31).setTitle(`${user.tag}'s Banner`).setImage(banner)], ephemeral: true });
+    if (!banner) return interaction.reply({ embeds: [smallEmbed(`${user.tag} has no banner.`)] });
+    await interaction.reply({ embeds: [new EmbedBuilder().setColor(0x2b2d31).setTitle(`${user.tag}'s Banner`).setImage(banner)] });
     return;
   }
 }
