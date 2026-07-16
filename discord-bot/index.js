@@ -1300,6 +1300,59 @@ async function handlePanelModal(interaction) {
     return;
   }
 
+  if (id === 'modal_antispam_max') {
+    const val = parseInt(interaction.fields.getTextInputValue('val'));
+    if (isNaN(val) || val < 1 || val > 100) return interaction.reply({ content: 'Enter 1-100.', ephemeral: true });
+    ensureConfig(interaction.guildId);
+    setConfig(interaction.guildId, 'anti_spam_max', val);
+    await interaction.update(panelAntiSpam(interaction));
+    return;
+  }
+
+  if (id === 'modal_antispam_window') {
+    const val = parseInt(interaction.fields.getTextInputValue('val'));
+    if (isNaN(val) || val < 1 || val > 60) return interaction.reply({ content: 'Enter 1-60.', ephemeral: true });
+    ensureConfig(interaction.guildId);
+    setConfig(interaction.guildId, 'anti_spam_window', val);
+    await interaction.update(panelAntiSpam(interaction));
+    return;
+  }
+
+  if (id === 'modal_antispam_mute') {
+    const val = parseInt(interaction.fields.getTextInputValue('val'));
+    if (isNaN(val) || val < 1 || val > 86400) return interaction.reply({ content: 'Enter 1-86400.', ephemeral: true });
+    ensureConfig(interaction.guildId);
+    setConfig(interaction.guildId, 'anti_spam_mute', val);
+    await interaction.update(panelAntiSpam(interaction));
+    return;
+  }
+
+  if (id === 'modal_invite_warns') {
+    const val = parseInt(interaction.fields.getTextInputValue('val'));
+    if (isNaN(val) || val < 1 || val > 100) return interaction.reply({ content: 'Enter 1-100.', ephemeral: true });
+    ensureConfig(interaction.guildId);
+    setConfig(interaction.guildId, 'invite_warns', val);
+    await interaction.update(panelAntiSpam(interaction));
+    return;
+  }
+
+  if (id === 'modal_invite_mute') {
+    const val = parseInt(interaction.fields.getTextInputValue('val'));
+    if (isNaN(val) || val < 1 || val > 86400) return interaction.reply({ content: 'Enter 1-86400.', ephemeral: true });
+    ensureConfig(interaction.guildId);
+    setConfig(interaction.guildId, 'invite_mute', val);
+    await interaction.update(panelAntiSpam(interaction));
+    return;
+  }
+
+  if (id === 'modal_invite_whitelist') {
+    const domain = interaction.fields.getTextInputValue('domain').toLowerCase().trim();
+    if (domain.length < 2) return interaction.reply({ content: 'Invalid domain.', ephemeral: true });
+    db.prepare('INSERT OR REPLACE INTO invite_whitelist VALUES (?,?)').run(interaction.guildId, domain);
+    await interaction.update(panelAntiSpam(interaction));
+    return;
+  }
+
   if (id === 'modal_log') {
     const channelId = interaction.fields.getTextInputValue('channel').replace(/[<#>]/g, '');
     const channel = interaction.guild.channels.cache.get(channelId);
@@ -1535,6 +1588,12 @@ const slashCommands = [
   { name: 'leavevc', description: 'Bot leaves the voice channel', options: [
     { name: 'channel', description: 'Voice channel (optional)', type: 7, required: false },
   ]},
+  { name: 'avatar', description: 'Show a user avatar', options: [
+    { name: 'user', description: 'Target user', type: 6, required: false },
+  ]},
+  { name: 'banner', description: 'Show a user banner', options: [
+    { name: 'user', description: 'Target user', type: 6, required: false },
+  ]},
 ];
 
 // ─────────────────────────────── CLIENT EVENTS ───────────────────────────────
@@ -1684,31 +1743,28 @@ async function handleSlash(interaction) {
 
   if (cmd === 'help') {
     const isOwner = interaction.user.id === OWNER_ID;
-    const lines = [
-      '**═══ SETTINGS ═══**' + (isOwner ? '' : ' _(owner only)_'),
-      ...(isOwner ? [
-        '  \u2022 `/panel` \u2014 Full admin panel',
-        '  \u2022 `/settings` \u2014 View current settings',
-        '  \u2022 `/setlog`, `/tagchannel`, `/ai`',
-        '  \u2022 `/warncount`, `/warnsetting`, `/warnsettings`',
-        '  \u2022 `/banword`, `/muteword`, `/automessage`',
-        '  \u2022 `/giverole`, `/bantime`',
-        '  \u2022 `/roleall`, `/removeall`, `/slowmode`',
-        '  \u2022 `/lock`, `/unlock`, `/nick`, `/emoji`',
-        '  \u2022 `/purge`, `/sendmessage`, `/rules`, `/say`',
-      ] : []),
-      '',
-      '**═══ POLLS ═══**' + (isOwner ? '' : ' _(owner only)_'),
-      ...(isOwner ? [
-        '  \u2022 `/poll` \u2014 Create a voting poll',
-        '  \u2022 `/endpoll` \u2014 Close a poll',
-        '  \u2022 `/announce` \u2014 Announce winner',
-      ] : []),
+    const everyoneCmds = [
+      '**⚡ EVERYONE**',
+      '  \u2022 `/help` \u2014 This menu',
+      '  \u2022 `/userinfo` \u2014 User info',
+      '  \u2022 `/serverinfo` \u2014 Server info',
+      '  \u2022 `/afk <reason>` \u2014 Set AFK',
+      '  \u2022 `/remind <time> <msg>` \u2014 Reminder (DM)',
+      '  \u2022 `/ticket` \u2014 Open a support ticket',
+      '  \u2022 `/entervc <channel>` \u2014 Bot joins VC',
+      '  \u2022 `/leavevc` \u2014 Bot leaves VC',
       '  \u2022 `/activepolls` \u2014 View active polls',
       '  \u2022 `/history` \u2014 Past poll results',
-      '  \u2022 `/subscribe` \u2014 DM alerts toggle',
+      '  \u2022 `/subscribe` \u2014 Poll DM alerts',
+      '  \u2022 `/giveaway` \u2014 (owner only)',
       '',
-      '**═══ MODERATION ═══** _(prefix `,`)_',
+      '**📋 POLLS**',
+      '  \u2022 `/poll` \u2014 Create a poll',
+      '  \u2022 `/endpoll <id>` \u2014 End a poll',
+      '  \u2022 `,endpoll <id>` \u2014 End via prefix too',
+      '  \u2022 `/announce <id>` \u2014 Announce winner',
+      '',
+      '**🛡️ MODERATION** _(prefix `,`)_',
       '  \u2022 `,warn` `,warns` `,clearwarns` `,removewarn`',
       '  \u2022 `,ban` `,pban` `,kick` `,unban`',
       '  \u2022 `,mute` `,unmute` `,timeout` `,untimeout`',
@@ -1717,28 +1773,40 @@ async function handleSlash(interaction) {
       '  \u2022 `,voicekick` `,deafen` `,undeafen`',
       '  \u2022 `,snipe` `,banner` `,avatar`',
       '',
-      '**═══ SHORTCUTS ═══** _(prefix)_',
+      '**⚙️ SHORTCUTS** _(prefix)_',
       '  \u2022 `,warnword <word> [time]` / `,muteword <word> [time]`',
       '  \u2022 `,addword <trigger> <reply>` \u2014 Auto-reply',
-      '  \u2022 `,endpoll <message_id>` \u2014 End a poll by ID',
-      '',
-      '**═══ EVERYONE ═══**',
-      '  \u2022 `/userinfo` `/serverinfo` `/remind`',
-      '  \u2022 `/afk` `/subscribe` `/activepolls` `/history`',
+      '  \u2022 `,endpoll <id>` \u2014 End poll by ID',
+      '  \u2022 `,rules` \u2014 Save rules (owner)',
     ];
+    if (isOwner) {
+      everyoneCmds.push(
+        '',
+        '**🔧 OWNER ONLY**',
+        '  \u2022 `/panel` \u2014 Full admin panel',
+        '  \u2022 `/settings` \u2014 View settings',
+        '  \u2022 `/setlog`, `/tagchannel`, `/ai`',
+        '  \u2022 `/warncount`, `/warnsetting`, `/warnsettings`',
+        '  \u2022 `/banword`, `/muteword`, `/automessage`',
+        '  \u2022 `/giverole`, `/bantime`',
+        '  \u2022 `/roleall`, `/removeall`, `/slowmode`',
+        '  \u2022 `/lock`, `/unlock`, `/nick`, `/emoji`',
+        '  \u2022 `/purge`, `/sendmessage`, `/rules`, `/say`',
+        '  \u2022 `/endgiveaway`, `/reroll`',
+      );
+    }
     const bannerPath = require('path').join(__dirname, 'assets', 'banner.png');
     const bannerFile = require('fs').existsSync(bannerPath) ? new AttachmentBuilder(bannerPath) : null;
     await interaction.reply({
-      embeds: [new EmbedBuilder().setColor(0x000000).setImage(bannerFile ? 'attachment://banner.png' : null).setDescription(lines.join('\n'))],
+      embeds: [new EmbedBuilder().setColor(0x000000).setImage(bannerFile ? 'attachment://banner.png' : null).setDescription(everyoneCmds.join('\n'))],
       files: bannerFile ? [bannerFile] : [],
       ephemeral: true,
     });
     return;
   }
 
-  // ── Poll commands (existing) ──
+  // ── Poll commands ──
   if (cmd === 'poll') {
-    if (interaction.user.id !== OWNER_ID) return interaction.reply({ content: 'Owner only.', ephemeral: true });
     const raw = interaction.options.getString('options');
     const timeStr = interaction.options.getString('time');
     const description = interaction.options.getString('description');
@@ -2314,6 +2382,21 @@ async function handleSlash(interaction) {
         await interaction.reply({ content: 'Bot is not in any voice channel.', ephemeral: true });
       }
     }
+    return;
+  }
+
+  if (cmd === 'avatar') {
+    const user = interaction.options.getUser('user') || interaction.user;
+    await interaction.reply({ embeds: [new EmbedBuilder().setColor(0x2b2d31).setTitle(`${user.tag}'s Avatar`).setImage(user.displayAvatarURL({ size: 1024 }))], ephemeral: true });
+    return;
+  }
+
+  if (cmd === 'banner') {
+    const user = interaction.options.getUser('user') || interaction.user;
+    const fetched = await client.users.fetch(user.id, { force: true });
+    const banner = fetched.bannerURL({ size: 1024 });
+    if (!banner) return interaction.reply({ embeds: [smallEmbed(`${user.tag} has no banner.`)], ephemeral: true });
+    await interaction.reply({ embeds: [new EmbedBuilder().setColor(0x2b2d31).setTitle(`${user.tag}'s Banner`).setImage(banner)], ephemeral: true });
     return;
   }
 }
