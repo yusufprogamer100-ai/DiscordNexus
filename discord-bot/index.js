@@ -1743,14 +1743,14 @@ async function handleSlash(interaction) {
     const isOwner = interaction.user.id === OWNER_ID;
     const embed = new EmbedBuilder().setColor(0x000000).setTitle('NEXUS').setDescription('Your all-in-one Discord bot').setFooter({ text: 'Prefix: ,' });
     embed.addFields(
-      { name: '⚡ Everyone', value: '`/help`, `/userinfo`, `/serverinfo`, `/avatar`, `/banner`, `/afk`, `/remind`, `/ticket`, `/entervc`, `/leavevc`', inline: false },
-      { name: '📋 Polls', value: '`/poll`, `/endpoll`, `/announce`, `/activepolls`, `/history`, `/subscribe`, `,endpoll`', inline: false },
-      { name: '🎮 Giveaway', value: '`/giveaway`, `/endgiveaway`, `/reroll`', inline: false },
-      { name: '🛡️ Moderation', value: '`,warn`, `,ban`, `,kick`, `,mute`, `,timeout`, `,clear`, `,nuke`, `,role`, `,lock`, `,unlock`, `,slowmode`, `,voicekick`, `,snipe`, `,banner`, `,avatar`', inline: false },
-      { name: '⚙️ Shortcuts', value: '`,warnword`, `,muteword`, `,addword`, `,endpoll`', inline: false },
-      { name: '🔧 Settings', value: '`/settings`, `/setlog`, `/tagchannel`, `/ai`, `/warncount`, `/warnsetting`, `/banword`, `/muteword`, `/automessage`, `/giverole`, `/bantime`, `/roleall`, `/removeall`, `/slowmode`, `/lock`, `/unlock`, `/nick`, `/emoji`, `/purge`, `/sendmessage`, `/say`, `/rules`, `,rules`', inline: false },
+      { name: 'Everyone', value: '`/help`, `/userinfo`, `/serverinfo`, `/avatar`, `/banner`, `/afk`, `/remind`, `/ticket`, `/entervc`, `/leavevc`', inline: false },
+      { name: 'Polls', value: '`/poll`, `/endpoll`, `/announce`, `/activepolls`, `/history`, `/subscribe`, `,endpoll`', inline: false },
+      { name: 'Giveaway', value: '`/giveaway`, `/endgiveaway`, `/reroll`', inline: false },
+      { name: 'Moderation', value: '`,warn`, `,ban`, `,kick`, `,mute`, `,timeout`, `,clear`, `,nuke`, `,role`, `,lock`, `,unlock`, `,slowmode`, `,voicekick`, `,snipe`, `,banner`, `,avatar`', inline: false },
+      { name: 'Shortcuts', value: '`,warnword`, `,muteword`, `,addword`, `,endpoll`', inline: false },
+      { name: 'Settings', value: '`/settings`, `/setlog`, `/tagchannel`, `/ai`, `/warncount`, `/warnsetting`, `/banword`, `/muteword`, `/automessage`, `/giverole`, `/bantime`, `/roleall`, `/removeall`, `/slowmode`, `/lock`, `/unlock`, `/nick`, `/emoji`, `/purge`, `/sendmessage`, `/say`, `/rules`, `,rules`', inline: false },
     );
-    if (isOwner) embed.addFields({ name: '🔐 Owner', value: '`/panel`', inline: false });
+    if (isOwner) embed.addFields({ name: 'Owner', value: '`/panel`', inline: false });
     const bannerPath = require('path').join(__dirname, 'assets', 'banner.png');
     const bannerFile = require('fs').existsSync(bannerPath) ? new AttachmentBuilder(bannerPath) : null;
     if (bannerFile) embed.setImage('attachment://banner.png');
