@@ -1741,26 +1741,32 @@ async function handleSlash(interaction) {
 
   if (cmd === 'help') {
     const isOwner = interaction.user.id === OWNER_ID;
-    const everyoneCmds = [
+    const lines = [
       '**⚡ EVERYONE**',
       '  \u2022 `/help` \u2014 This menu',
       '  \u2022 `/userinfo` \u2014 User info',
       '  \u2022 `/serverinfo` \u2014 Server info',
+      '  \u2022 `/avatar [user]` \u2014 User avatar',
+      '  \u2022 `/banner [user]` \u2014 User banner',
       '  \u2022 `/afk <reason>` \u2014 Set AFK',
       '  \u2022 `/remind <time> <msg>` \u2014 Reminder (DM)',
       '  \u2022 `/ticket` \u2014 Open a support ticket',
       '  \u2022 `/entervc <channel>` \u2014 Bot joins VC',
       '  \u2022 `/leavevc` \u2014 Bot leaves VC',
+      '',
+      '**📋 POLLS**',
+      '  \u2022 `/poll <options> [time]` \u2014 Create a poll',
+      '  \u2022 `/endpoll <id>` \u2014 End a poll',
+      '  \u2022 `/announce <id>` \u2014 Announce winner',
       '  \u2022 `/activepolls` \u2014 View active polls',
       '  \u2022 `/history` \u2014 Past poll results',
       '  \u2022 `/subscribe` \u2014 Poll DM alerts',
-      '  \u2022 `/giveaway` \u2014 (owner only)',
-      '',
-      '**📋 POLLS**',
-      '  \u2022 `/poll` \u2014 Create a poll',
-      '  \u2022 `/endpoll <id>` \u2014 End a poll',
       '  \u2022 `,endpoll <id>` \u2014 End via prefix too',
-      '  \u2022 `/announce <id>` \u2014 Announce winner',
+      '',
+      '**🎮 GIVEAWAY**',
+      '  \u2022 `/giveaway <duration> <prize>` \u2014 Start giveaway',
+      '  \u2022 `/endgiveaway <id>` \u2014 End giveaway early',
+      '  \u2022 `/reroll <id>` \u2014 Reroll winners',
       '',
       '**🛡️ MODERATION** _(prefix `,`)_',
       '  \u2022 `,warn` `,warns` `,clearwarns` `,removewarn`',
@@ -1775,28 +1781,26 @@ async function handleSlash(interaction) {
       '  \u2022 `,warnword <word> [time]` / `,muteword <word> [time]`',
       '  \u2022 `,addword <trigger> <reply>` \u2014 Auto-reply',
       '  \u2022 `,endpoll <id>` \u2014 End poll by ID',
-      '  \u2022 `,rules` \u2014 Save rules (owner)',
-    ];
-    if (isOwner) {
-      everyoneCmds.push(
-        '',
-        '**🔧 OWNER ONLY**',
-        '  \u2022 `/panel` \u2014 Full admin panel',
-        '  \u2022 `/settings` \u2014 View settings',
-        '  \u2022 `/setlog`, `/tagchannel`, `/ai`',
-        '  \u2022 `/warncount`, `/warnsetting`, `/warnsettings`',
-        '  \u2022 `/banword`, `/muteword`, `/automessage`',
-        '  \u2022 `/giverole`, `/bantime`',
-        '  \u2022 `/roleall`, `/removeall`, `/slowmode`',
-        '  \u2022 `/lock`, `/unlock`, `/nick`, `/emoji`',
-        '  \u2022 `/purge`, `/sendmessage`, `/rules`, `/say`',
-        '  \u2022 `/endgiveaway`, `/reroll`',
-      );
-    }
+      '',
+      '**🔧 SETTINGS**',
+      '  \u2022 `/settings` \u2014 View bot settings',
+      '  \u2022 `/setlog <channel>` \u2014 Set log channel',
+      '  \u2022 `/tagchannel [channel]` \u2014 Welcome tag channel',
+      '  \u2022 `/ai <provider> <key>` \u2014 Configure AI chat',
+      '  \u2022 `/warncount`, `/warnsetting`, `/warnsettings`',
+      '  \u2022 `/banword`, `/muteword`, `/automessage`',
+      '  \u2022 `/giverole`, `/bantime`',
+      '  \u2022 `/roleall`, `/removeall`, `/slowmode`',
+      '  \u2022 `/lock`, `/unlock`, `/nick`, `/emoji`',
+      '  \u2022 `/purge <amount>`, `/sendmessage`, `/say`',
+      '  \u2022 `/rules` \u2014 Send saved rules',
+      '  \u2022 `,rules` \u2014 Save new rules text',
+      (isOwner ? '  \u2022 `/panel` \u2014 Full admin panel' : ''),
+    ].filter(Boolean);
     const bannerPath = require('path').join(__dirname, 'assets', 'banner.png');
     const bannerFile = require('fs').existsSync(bannerPath) ? new AttachmentBuilder(bannerPath) : null;
     await interaction.reply({
-      embeds: [new EmbedBuilder().setColor(0x000000).setImage(bannerFile ? 'attachment://banner.png' : null).setDescription(everyoneCmds.join('\n'))],
+      embeds: [new EmbedBuilder().setColor(0x000000).setImage(bannerFile ? 'attachment://banner.png' : null).setDescription(lines.join('\n'))],
       files: bannerFile ? [bannerFile] : [],
       ephemeral: true,
     });
