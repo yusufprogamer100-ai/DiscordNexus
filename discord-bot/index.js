@@ -1619,8 +1619,6 @@ client.once('ready', async () => {
   console.log(`[CACHE] ${cache.size} polls, temp ban checker active`);
 });
 
-client.on('messageCreate', handlePrefix);
-
 client.on('messageDelete', (msg) => {
   if (msg.author?.bot || !msg.guild || !msg.content) return;
   snipe.add(msg.guild.id, msg.channel.id, {
@@ -2510,6 +2508,13 @@ client.on('messageCreate', async (msg) => {
     setConfig(msg.guild.id, 'rules_content', msg.content);
     await msg.reply({ embeds: [smallEmbed('Rules saved successfully!')] }).catch(() => {});
     return;
+  }
+
+  // ── Handle prefix commands ──
+  const isCommand = msg.content.startsWith(PREFIX);
+  if (isCommand) {
+    await handlePrefix(msg);
+    return; // don't process further for commands
   }
 
   const content = msg.content;
