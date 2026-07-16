@@ -1741,68 +1741,20 @@ async function handleSlash(interaction) {
 
   if (cmd === 'help') {
     const isOwner = interaction.user.id === OWNER_ID;
-    const lines = [
-      '**⚡ EVERYONE**',
-      '  \u2022 `/help` \u2014 This menu',
-      '  \u2022 `/userinfo` \u2014 User info',
-      '  \u2022 `/serverinfo` \u2014 Server info',
-      '  \u2022 `/avatar [user]` \u2014 User avatar',
-      '  \u2022 `/banner [user]` \u2014 User banner',
-      '  \u2022 `/afk <reason>` \u2014 Set AFK',
-      '  \u2022 `/remind <time> <msg>` \u2014 Reminder (DM)',
-      '  \u2022 `/ticket` \u2014 Open a support ticket',
-      '  \u2022 `/entervc <channel>` \u2014 Bot joins VC',
-      '  \u2022 `/leavevc` \u2014 Bot leaves VC',
-      '',
-      '**📋 POLLS**',
-      '  \u2022 `/poll <options> [time]` \u2014 Create a poll',
-      '  \u2022 `/endpoll <id>` \u2014 End a poll',
-      '  \u2022 `/announce <id>` \u2014 Announce winner',
-      '  \u2022 `/activepolls` \u2014 View active polls',
-      '  \u2022 `/history` \u2014 Past poll results',
-      '  \u2022 `/subscribe` \u2014 Poll DM alerts',
-      '  \u2022 `,endpoll <id>` \u2014 End via prefix too',
-      '',
-      '**🎮 GIVEAWAY**',
-      '  \u2022 `/giveaway <duration> <prize>` \u2014 Start giveaway',
-      '  \u2022 `/endgiveaway <id>` \u2014 End giveaway early',
-      '  \u2022 `/reroll <id>` \u2014 Reroll winners',
-      '',
-      '**🛡️ MODERATION** _(prefix `,`)_',
-      '  \u2022 `,warn` `,warns` `,clearwarns` `,removewarn`',
-      '  \u2022 `,ban` `,pban` `,kick` `,unban`',
-      '  \u2022 `,mute` `,unmute` `,timeout` `,untimeout`',
-      '  \u2022 `,role` `,lock` `,unlock` `,slowmode`',
-      '  \u2022 `,clear` `,nuke` `,raidmode`',
-      '  \u2022 `,voicekick` `,deafen` `,undeafen`',
-      '  \u2022 `,snipe` `,banner` `,avatar`',
-      '',
-      '**⚙️ SHORTCUTS** _(prefix)_',
-      '  \u2022 `,warnword <word> [time]` / `,muteword <word> [time]`',
-      '  \u2022 `,addword <trigger> <reply>` \u2014 Auto-reply',
-      '  \u2022 `,endpoll <id>` \u2014 End poll by ID',
-      '',
-      '**🔧 SETTINGS**',
-      '  \u2022 `/settings` \u2014 View bot settings',
-      '  \u2022 `/setlog <channel>` \u2014 Set log channel',
-      '  \u2022 `/tagchannel [channel]` \u2014 Welcome tag channel',
-      '  \u2022 `/ai <provider> <key>` \u2014 Configure AI chat',
-      '  \u2022 `/warncount`, `/warnsetting`, `/warnsettings`',
-      '  \u2022 `/banword`, `/muteword`, `/automessage`',
-      '  \u2022 `/giverole`, `/bantime`',
-      '  \u2022 `/roleall`, `/removeall`, `/slowmode`',
-      '  \u2022 `/lock`, `/unlock`, `/nick`, `/emoji`',
-      '  \u2022 `/purge <amount>`, `/sendmessage`, `/say`',
-      '  \u2022 `/rules` \u2014 Send saved rules',
-      '  \u2022 `,rules` \u2014 Save new rules text',
-      (isOwner ? '  \u2022 `/panel` \u2014 Full admin panel' : ''),
-    ].filter(Boolean);
+    const embed = new EmbedBuilder().setColor(0x000000).setTitle('NEXUS').setDescription('Your all-in-one Discord bot').setFooter({ text: 'Prefix: ,' });
+    embed.addFields(
+      { name: '⚡ Everyone', value: '`/help`, `/userinfo`, `/serverinfo`, `/avatar`, `/banner`, `/afk`, `/remind`, `/ticket`, `/entervc`, `/leavevc`', inline: false },
+      { name: '📋 Polls', value: '`/poll`, `/endpoll`, `/announce`, `/activepolls`, `/history`, `/subscribe`, `,endpoll`', inline: false },
+      { name: '🎮 Giveaway', value: '`/giveaway`, `/endgiveaway`, `/reroll`', inline: false },
+      { name: '🛡️ Moderation', value: '`,warn`, `,ban`, `,kick`, `,mute`, `,timeout`, `,clear`, `,nuke`, `,role`, `,lock`, `,unlock`, `,slowmode`, `,voicekick`, `,snipe`, `,banner`, `,avatar`', inline: false },
+      { name: '⚙️ Shortcuts', value: '`,warnword`, `,muteword`, `,addword`, `,endpoll`', inline: false },
+      { name: '🔧 Settings', value: '`/settings`, `/setlog`, `/tagchannel`, `/ai`, `/warncount`, `/warnsetting`, `/banword`, `/muteword`, `/automessage`, `/giverole`, `/bantime`, `/roleall`, `/removeall`, `/slowmode`, `/lock`, `/unlock`, `/nick`, `/emoji`, `/purge`, `/sendmessage`, `/say`, `/rules`, `,rules`', inline: false },
+    );
+    if (isOwner) embed.addFields({ name: '🔐 Owner', value: '`/panel`', inline: false });
     const bannerPath = require('path').join(__dirname, 'assets', 'banner.png');
     const bannerFile = require('fs').existsSync(bannerPath) ? new AttachmentBuilder(bannerPath) : null;
-    await interaction.reply({
-      embeds: [new EmbedBuilder().setColor(0x000000).setImage(bannerFile ? 'attachment://banner.png' : null).setDescription(lines.join('\n'))],
-      files: bannerFile ? [bannerFile] : [],
-    });
+    if (bannerFile) embed.setImage('attachment://banner.png');
+    await interaction.reply({ embeds: [embed], files: bannerFile ? [bannerFile] : [] });
     return;
   }
 
