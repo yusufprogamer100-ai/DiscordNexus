@@ -1802,7 +1802,6 @@ async function handleSlash(interaction) {
     await interaction.reply({
       embeds: [new EmbedBuilder().setColor(0x000000).setImage(bannerFile ? 'attachment://banner.png' : null).setDescription(lines.join('\n'))],
       files: bannerFile ? [bannerFile] : [],
-      ephemeral: true,
     });
     return;
   }
