@@ -1734,8 +1734,9 @@ async function handlePanelModal(interaction) {
     const logType = id.replace('log_channel_modal_', '');
     const channelId = interaction.fields.getTextInputValue('channel').replace(/[<#>]/g, '');
     try {
-      const channel = await interaction.guild.channels.fetch(channelId);
-      if (!channel || (channel.type !== ChannelType.GuildText && channel.type !== ChannelType.GuildAnnouncement)) {
+      let channel = interaction.guild.channels.cache.get(channelId);
+      if (!channel) channel = await interaction.guild.channels.fetch(channelId);
+      if (!channel || (channel.type !== ChannelType.GuildText && channel.type !== ChannelType.GuildAnnouncement && channel.type !== ChannelType.GuildForum && channel.type !== ChannelType.GuildMedia)) {
         return interaction.reply({ content: 'Invalid channel ID or not a text channel.', ephemeral: true });
       }
       db.prepare('INSERT OR REPLACE INTO log_settings VALUES (?,?,COALESCE((SELECT enabled FROM log_settings WHERE guild_id = ? AND log_type = ?),1),?)').run(interaction.guildId, logType, interaction.guildId, logType, channelId);
@@ -2389,8 +2390,8 @@ async function handleSlash(interaction) {
 
   if (cmd === 'setlog') {
     const channel = interaction.options.getChannel('channel');
-    if (channel.type !== ChannelType.GuildText && channel.type !== ChannelType.GuildAnnouncement) {
-      return interaction.reply({ content: 'Select a text channel.', ephemeral: true });
+    if (!channel || (channel.type !== ChannelType.GuildText && channel.type !== ChannelType.GuildAnnouncement && channel.type !== ChannelType.GuildForum && channel.type !== ChannelType.GuildMedia)) {
+      return interaction.reply({ content: 'Select a text/news/forum channel.', ephemeral: true });
     }
     ensureConfig(interaction.guildId);
     setConfig(interaction.guildId, 'log_channel_id', channel.id);
