@@ -1103,8 +1103,8 @@ function panelLog(interaction) {
         select,
       )] : []),
       new ActionRowBuilder().addComponents(
-        ...(access ? [new ButtonBuilder().setCustomId('panel_act_log').setLabel(logChanId ? '\uD83D\uDD04 Change Main Channel' : '\uD83D\uDD0D Set Main Channel').setStyle(ButtonStyle.Primary)] : []),
-        new ButtonBuilder().setCustomId('panel_act_log_reset').setLabel('\uD83D\uDD04 Reset All').setStyle(ButtonStyle.Danger),
+      ...(access ? [new ButtonBuilder().setCustomId('panel_act_log').setLabel(logChanId ? '\uD83D\uDD04 Change Main Channel' : '\uD83D\uDD0D Set Main Channel').setStyle(ButtonStyle.Primary)] : []),
+      ...(access ? [new ButtonBuilder().setCustomId('panel_act_log_reset').setLabel('\uD83D\uDD04 Reset All').setStyle(ButtonStyle.Danger)] : []),
       ),
       new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId('panel_main').setLabel('\u2190 Back').setStyle(ButtonStyle.Secondary),
@@ -1668,12 +1668,16 @@ async function handlePanelModal(interaction) {
   if (id.startsWith('log_channel_modal_')) {
     const logType = id.replace('log_channel_modal_', '');
     const channelId = interaction.fields.getTextInputValue('channel').replace(/[<#>]/g, '');
-    const channel = interaction.guild.channels.cache.get(channelId);
-    if (!channel || (channel.type !== ChannelType.GuildText && channel.type !== ChannelType.GuildAnnouncement)) {
-      return interaction.reply({ content: 'Invalid channel ID or not a text channel.', ephemeral: true });
+    try {
+      const channel = await interaction.guild.channels.fetch(channelId);
+      if (!channel || (channel.type !== ChannelType.GuildText && channel.type !== ChannelType.GuildAnnouncement)) {
+        return interaction.reply({ content: 'Invalid channel ID or not a text channel.', ephemeral: true });
+      }
+      db.prepare('INSERT OR REPLACE INTO log_settings VALUES (?,?,COALESCE((SELECT enabled FROM log_settings WHERE guild_id = ? AND log_type = ?),1),?)').run(interaction.guildId, logType, interaction.guildId, logType, channelId);
+      await interaction.reply({ content: `${LOG_NAMES[logType] || logType} will log to <#${channelId}>.`, ephemeral: true });
+    } catch (err) {
+      await interaction.reply({ content: `Error: could not find that channel. Use a valid text channel ID.`, ephemeral: true });
     }
-    db.prepare('INSERT OR REPLACE INTO log_settings VALUES (?,?,COALESCE((SELECT enabled FROM log_settings WHERE guild_id = ? AND log_type = ?),1),?)').run(interaction.guildId, logType, interaction.guildId, logType, channelId);
-    await interaction.reply({ content: `${LOG_NAMES[logType] || logType} will log to <#${channelId}>.`, ephemeral: true });
     return;
   }
 }
@@ -2255,6 +2259,9 @@ async function handleSlash(interaction) {
   }
 
   // ── Poll commands ──
+  if (cmd === 'poll' || cmd === 'endpoll' || cmd === 'activepolls' || cmd === 'history') {
+    if (!hasPanelAccess(interaction.member)) return interaction.reply({ content: 'Only the bot owner or authorized staff can use poll commands.', ephemeral: true });
+  }
   if (cmd === 'poll') {
     const raw = interaction.options.getString('options');
     const timeStr = interaction.options.getString('time');
