@@ -244,20 +244,36 @@ async function getMember(guild, userId) {
 }
 
 async function checkWarnLimit(guild, userId) {
-  const ws = db.prepare('SELECT * FROM warn_settings WHERE guild_id = ?').get(guild.id);
-  if (!ws) return;
+  let ws = db.prepare('SELECT * FROM warn_settings WHERE guild_id = ?').get(guild.id);
+  if (!ws) {
+    db.prepare('INSERT INTO warn_settings (guild_id, max_warns, action, mute_duration) VALUES (?,5,\'kick\',\'1h\')').run(guild.id);
+    ws = { max_warns: 5, action: 'kick', mute_duration: '1h' };
+  }
   const count = db.prepare('SELECT COUNT(*) as c FROM warns WHERE guild_id = ? AND user_id = ?').get(guild.id, userId).c;
   if (count >= ws.max_warns) {
-    const member = await getMember(guild, userId);
+    const member = await guild.members.fetch(userId).catch(() => null);
     if (!member) return;
-    const action = ws.action;
-    if (action === 'kick') {
-      await member.kick(`Warn limit reached (${ws.max_warns})`).catch(() => {});
-    } else if (action === 'ban') {
-      await member.ban({ reason: `Warn limit reached (${ws.max_warns})` }).catch(() => {});
-    } else if (action === 'mute') {
-      const dur = getTimeSeconds(ws.mute_duration) || 3600;
-      await member.timeout(dur * 1000, `Warn limit reached (${ws.max_warns})`).catch(() => {});
+    const action = ws.action || 'kick';
+    try {
+      if (action === 'kick') {
+        await member.kick(`Warn limit reached (${ws.max_warns})`);
+        await sendModLog(guild, { Action: 'Auto-Kick (Warn Limit)', User: member.user.tag, ID: userId, Warns: count, MaxWarns: ws.max_warns });
+      } else if (action === 'ban') {
+        await member.ban({ reason: `Warn limit reached (${ws.max_warns})` });
+        await sendModLog(guild, { Action: 'Auto-Ban (Warn Limit)', User: member.user.tag, ID: userId, Warns: count, MaxWarns: ws.max_warns });
+      } else if (action === 'mute') {
+        const dur = getTimeSeconds(ws.mute_duration) || 3600;
+        await member.timeout(dur * 1000, `Warn limit reached (${ws.max_warns})`);
+        await sendModLog(guild, { Action: `Auto-Mute (Warn Limit)`, User: member.user.tag, ID: userId, Duration: timeLabel(dur), Warns: count, MaxWarns: ws.max_warns });
+      }
+      try { await member.send({ embeds: [smallEmbed(`You were automatically **${action}** in **${guild.name}** for reaching **${ws.max_warns}** warns.`)] }); } catch {}
+    } catch (e) {
+      console.error(`[WARN LIMIT] Failed to ${action} ${userId}: ${e.message}`);
+      const logChanId = db.prepare('SELECT log_channel_id FROM config WHERE guild_id = ?').get(guild.id)?.log_channel_id;
+      if (logChanId) {
+        const chan = guild.channels.cache.get(logChanId);
+        if (chan) chan.send({ embeds: [errorEmbed(`Failed to ${action} <@${userId}> (warn limit reached). Bot may lack permissions.`)] }).catch(() => {});
+      }
     }
   }
 }
