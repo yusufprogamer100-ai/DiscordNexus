@@ -22,7 +22,8 @@ const client = new Client({
   intents: [
     GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent,
     GatewayIntentBits.GuildMembers, GatewayIntentBits.GuildModeration, GatewayIntentBits.GuildMessageReactions,
-    GatewayIntentBits.DirectMessages, GatewayIntentBits.GuildVoiceStates,
+    GatewayIntentBits.DirectMessages, GatewayIntentBits.GuildVoiceStates, GatewayIntentBits.GuildEmojisAndStickers,
+    GatewayIntentBits.GuildInvites,
   ],
 });
 
@@ -823,7 +824,7 @@ async function handlePrefix(msg) {
 
   // ── Endpoll prefix ──
   if (cmd === 'endpoll') {
-    if (member.id !== OWNER_ID) return msg.reply({ embeds: [errorEmbed('Owner only.')] });
+    if (!hasPanelAccess(msg.member)) return msg.reply({ embeds: [errorEmbed('Owner only.')] });
     const msgId = args[0];
     if (!msgId) return msg.reply({ embeds: [errorEmbed('Usage: ,endpoll <message_id>')] });
     const poll = cache.get(msgId);
@@ -2288,13 +2289,9 @@ async function handleSlash(interaction) {
   }
 
   if (cmd === 'endpoll') {
-    if (interaction.user.id !== OWNER_ID) return interaction.reply({ content: 'Owner only.', ephemeral: true });
     const msgId = interaction.options.getString('message_id');
     const poll = cache.get(msgId);
     if (!poll) return interaction.reply({ content: 'Poll not found.', ephemeral: true });
-    if (poll.authorId !== interaction.user.id && !checkPerms(interaction.member, PermissionFlagsBits.ManageMessages)) {
-      return interaction.reply({ content: 'Only the poll creator or users with Manage Messages can end polls.', ephemeral: true });
-    }
     const total = poll.counts.reduce((a, b) => a + b, 0);
     if (total === 0) {
       cache.delete(msgId); db.prepare('DELETE FROM polls WHERE message_id = ?').run(msgId);
@@ -2624,8 +2621,6 @@ async function handleSlash(interaction) {
       await interaction.editReply({ embeds: [smallEmbed(`${isGive ? 'Given' : 'Removed'} **${role.name}** to/from **${success}** members.${fail ? ` Failed: ${fail}` : ''}`)] });
       await sendModLog(interaction.guild, { Action: isGive ? 'Role All' : 'Remove All', Moderator: interaction.user.tag, Role: role.name, Success: success, Failed: fail });
     })();
-    await interaction.editReply({ embeds: [smallEmbed(`${isGive ? 'Given' : 'Removed'} **${role.name}** to/from **${success}** members.${fail ? ` Failed: ${fail}` : ''}`)] });
-    await sendModLog(interaction.guild, { Action: isGive ? 'Role All' : 'Remove All', Moderator: interaction.user.tag, Role: role.name, Success: success, Failed: fail });
     return;
   }
 
