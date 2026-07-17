@@ -177,6 +177,7 @@ const LOG_TYPES = {
   EMOJI: 'emoji',
   BULK_DELETE: 'bulk_delete',
   MODERATION: 'moderation',
+  MESSAGE_KEYWORD: 'message_keyword',
 };
 
 const LOG_NAMES = {
@@ -198,6 +199,7 @@ const LOG_NAMES = {
   emoji: 'Emoji/Sticker Changes',
   bulk_delete: 'Bulk Message Delete',
   moderation: 'Moderation Actions',
+  message_keyword: 'Keyword Triggers',
 };
 
 async function sendLog(guild, logType, embed) {
@@ -1104,11 +1106,38 @@ function panelLog(interaction) {
         select,
       )] : []),
       new ActionRowBuilder().addComponents(
-      ...(access ? [new ButtonBuilder().setCustomId('panel_act_log').setLabel(logChanId ? '\uD83D\uDD04 Change Main Channel' : '\uD83D\uDD0D Set Main Channel').setStyle(ButtonStyle.Primary)] : []),
-      ...(access ? [new ButtonBuilder().setCustomId('panel_act_log_reset').setLabel('\uD83D\uDD04 Reset All').setStyle(ButtonStyle.Danger)] : []),
+        ...(access ? [new ButtonBuilder().setCustomId('panel_act_log').setLabel(logChanId ? '\uD83D\uDD04 Change Main Channel' : '\uD83D\uDD0D Set Main Channel').setStyle(ButtonStyle.Primary)] : []),
+        ...(access ? [new ButtonBuilder().setCustomId('panel_act_log_reset').setLabel('\uD83D\uDD04 Reset All').setStyle(ButtonStyle.Danger)] : []),
       ),
       new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId('panel_keywordlog').setLabel('\uD83D\uDD0D Keyword Triggers').setStyle(ButtonStyle.Secondary),
         new ButtonBuilder().setCustomId('panel_main').setLabel('\u2190 Back').setStyle(ButtonStyle.Secondary),
+      ),
+    ],
+  };
+}
+
+function panelKeywordLog(interaction) {
+  const keywords = db.prepare('SELECT trigger FROM keyword_logs WHERE guild_id = ?').all(interaction.guildId);
+  const access = hasPanelAccess(interaction.member);
+
+  const desc = [
+    '**Keyword Triggers** — When someone types a trigger word in any channel, it is logged.',
+    '',
+    keywords.length ? keywords.map(k => `  \u2022 \`${k.trigger}\``).join('\n') : '  No keywords configured.',
+    '',
+    `Total: **${keywords.length}** triggers`,
+  ].join('\n');
+
+  return {
+    embeds: [new EmbedBuilder().setColor(0x2b2d31).setTitle('\uD83D\uDD0D Keyword Triggers').setDescription(desc)],
+    components: [
+      ...(access ? [new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId('panel_act_kw_add').setLabel('\u2795 Add Trigger').setStyle(ButtonStyle.Primary),
+        ...(keywords.length ? [new ButtonBuilder().setCustomId('panel_act_kw_del').setLabel('\u2796 Remove Trigger').setStyle(ButtonStyle.Danger)] : []),
+      )] : []),
+      new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId('panel_log').setLabel('\u2190 Back to Log').setStyle(ButtonStyle.Secondary),
       ),
     ],
   };
@@ -1327,6 +1356,7 @@ async function handlePanelButton(interaction) {
   if (id === 'panel_autoreply') return interaction.update(panelAutoReply(interaction));
   if (id === 'panel_permissions') return interaction.update(panelPermissions(interaction));
   if (id === 'panel_giveaway') return interaction.update(panelGiveaway(interaction));
+  if (id === 'panel_keywordlog') return interaction.update(panelKeywordLog(interaction));
   if (id === 'panel_close') return interaction.message.delete().catch(() => {});
 
   // ── All actions below require panel access ──
@@ -1384,6 +1414,15 @@ async function handlePanelButton(interaction) {
     { id: 'duration', label: 'Duration (e.g. 1h, 2d)', placeholder: '24h', min: 1, max: 10 },
     { id: 'winners', label: 'Winner count', placeholder: '1', min: 1, max: 2 },
   ]));
+  if (id === 'panel_act_kw_add') return interaction.showModal(createModal('modal_kw_add', 'Add Keyword Trigger', [{ id: 'trigger', label: 'Keyword to log', placeholder: 'example.com', min: 2, max: 100 }]));
+  if (id === 'panel_act_kw_del') {
+    const keywords = db.prepare('SELECT trigger FROM keyword_logs WHERE guild_id = ?').all(interaction.guildId);
+    if (!keywords.length) return interaction.reply({ content: 'No triggers to remove.', ephemeral: true });
+    const select = new StringSelectMenuBuilder().setCustomId('select_kw_del').setPlaceholder('Pick a trigger to remove').addOptions(
+      keywords.map(k => ({ label: k.trigger.length > 80 ? k.trigger.slice(0, 77) + '...' : k.trigger, value: k.trigger })),
+    );
+    return interaction.reply({ content: 'Select a keyword trigger to remove:', components: [new ActionRowBuilder().addComponents(select)], ephemeral: true });
+  }
 
   // Quick actions
   if (id.startsWith('panel_act_warnaction_')) {
@@ -1675,6 +1714,15 @@ async function handlePanelModal(interaction) {
     await msg.react('\uD83C\uDF89');
     db.prepare('INSERT INTO giveaways VALUES (?,?,?,?,?,?,?,?)').run(msg.id, interaction.guildId, interaction.channel.id, prize, winners, endsAt, interaction.user.id, '[]');
     await interaction.update(panelGiveaway(interaction));
+    return;
+  }
+
+  if (id === 'modal_kw_add') {
+    const trigger = interaction.fields.getTextInputValue('trigger').toLowerCase().trim();
+    if (trigger.length < 2) return interaction.reply({ content: 'Trigger must be at least 2 characters.', ephemeral: true });
+    db.prepare('INSERT OR REPLACE INTO keyword_logs VALUES (?,?)').run(interaction.guildId, trigger);
+    await interaction.update(panelKeywordLog(interaction));
+    await sendModLog(interaction.guild, { Action: 'Keyword Trigger Added', Moderator: interaction.user.tag, Trigger: trigger });
     return;
   }
 
@@ -2229,6 +2277,13 @@ client.on('interactionCreate', async (interaction) => {
     await interaction.reply({ content: `Mod role removed.`, ephemeral: true });
     return;
   }
+  if (interaction.isStringSelectMenu() && interaction.customId === 'select_kw_del') {
+    const trigger = interaction.values[0];
+    if (!hasPanelAccess(interaction.member)) return interaction.reply({ content: 'No permission.', ephemeral: true });
+    db.prepare('DELETE FROM keyword_logs WHERE guild_id = ? AND trigger = ?').run(interaction.guildId, trigger);
+    await interaction.reply({ content: `Trigger \`${trigger}\` removed.`, ephemeral: true });
+    return;
+  }
   if (interaction.isStringSelectMenu() && interaction.customId === 'vote') {
     const poll = cache.get(interaction.message.id);
     if (!poll) return interaction.reply({ content: 'This poll is no longer active.', ephemeral: true });
@@ -2253,17 +2308,15 @@ async function handleSlash(interaction) {
   const cmd = interaction.commandName;
 
   if (cmd === 'help') {
-    const isOwner = interaction.user.id === OWNER_ID;
     const embed = new EmbedBuilder().setColor(0x000000).setTitle('NEXUS').setDescription('Your all-in-one Discord bot').setFooter({ text: 'Prefix: ,' });
     embed.addFields(
-      { name: 'Everyone', value: '`/help`, `/userinfo`, `/serverinfo`, `/avatar`, `/banner`, `/afk`, `/remind`, `/ticket`, `/entervc`, `/leavevc`', inline: false },
-      { name: 'Polls', value: '`/poll`, `/endpoll`, `/announce`, `/activepolls`, `/history`, `/subscribe`, `,endpoll`', inline: false },
-      { name: 'Giveaway', value: '`/giveaway`, `/endgiveaway`, `/reroll`', inline: false },
-      { name: 'Moderation', value: '`,warn`, `,ban`, `,kick`, `,mute`, `,timeout`, `,clear`, `,nuke`, `,role`, `,lock`, `,unlock`, `,slowmode`, `,voicekick`, `,snipe`, `,banner`, `,avatar`', inline: false },
-      { name: 'Shortcuts', value: '`,warnword`, `,muteword`, `,addword`, `,endpoll`', inline: false },
-      { name: 'Settings', value: '`/settings`, `/setlog`, `/tagchannel`, `/ai`, `/warncount`, `/warnsetting`, `/banword`, `/muteword`, `/automessage`, `/giverole`, `/bantime`, `/roleall`, `/removeall`, `/slowmode`, `/lock`, `/unlock`, `/nick`, `/emoji`, `/purge`, `/sendmessage`, `/say`, `/rules`, `,rules`', inline: false },
+      { name: 'Everyone', value: '`/help`, `/panel`, `/userinfo`, `/serverinfo`, `/avatar`, `/banner`, `/afk`, `/remind`, `/ticket`, `/entervc`, `/leavevc`', inline: false },
+      { name: 'Polls', value: '`/poll`, `/endpoll`, `/activepolls`, `/history` (Owner + Staff only) `,endpoll`', inline: false },
+      { name: 'Giveaways', value: '`/giveaway`, `/endgiveaway`, `/reroll` (Owner only) — Panel: Log > Giveaways tab', inline: false },
+      { name: 'Moderation', value: '`,warn`, `,ban`, `,kick`, `,mute`, `,timeout`, `,clear`, `,nuke`, `,role`, `,lock`, `,unlock`, `,slowmode`, `,voicekick`, `,snipe`', inline: false },
+      { name: 'Auto-Mod', value: '`,warnword`, `,muteword`, `,addword` — Panel: Protect > Filters', inline: false },
+      { name: 'Settings', value: '`/panel` → All config (log types, anti-spam, tickets, AI, perms, keyword triggers, auto-replies)', inline: false },
     );
-    if (isOwner) embed.addFields({ name: 'Owner', value: '`/panel`', inline: false });
     const bannerPath = require('path').join(__dirname, 'assets', 'banner.png');
     const bannerFile = require('fs').existsSync(bannerPath) ? new AttachmentBuilder(bannerPath) : null;
     if (bannerFile) embed.setImage('attachment://banner.png');
@@ -3002,6 +3055,19 @@ client.on('messageCreate', async (msg) => {
       if (ar.trigger && ar.trigger.length >= 2 && lowerMsg.includes(ar.trigger.toLowerCase())) {
         console.log(`[AUTOREPLY] trigger="${ar.trigger}" content="${content}" match=true`);
         try { await msg.reply(ar.response); } catch (e) { console.log('[AUTOREPLY ERROR]', e.message); }
+        break;
+      }
+    }
+  }
+
+  // ── Keyword trigger log ──
+  const keywords = db.prepare('SELECT trigger FROM keyword_logs WHERE guild_id = ?').all(msg.guild.id);
+  if (keywords.length > 0) {
+    const lowerMsg = content.toLowerCase();
+    for (const kw of keywords) {
+      if (lowerMsg.includes(kw.trigger)) {
+        const e = new EmbedBuilder().setColor(0xf39c12).setTitle('Keyword Triggered').setDescription(`**Trigger:** \`${kw.trigger}\`\n**User:** ${msg.author.tag} (<@${msg.author.id}>)\n**Channel:** <#${msg.channel.id}>\n**Message:** ${msg.content}`).setFooter({ text: `User: ${msg.author.id}` }).setTimestamp();
+        sendLog(msg.guild, LOG_TYPES.MESSAGE_KEYWORD, e);
         break;
       }
     }

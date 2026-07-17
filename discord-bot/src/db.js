@@ -46,6 +46,7 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS mod_roles (guild_id TEXT, role_id TEXT, permissions TEXT DEFAULT '{}', PRIMARY KEY (guild_id, role_id));
   CREATE TABLE IF NOT EXISTS command_permissions (guild_id TEXT, command_name TEXT, allowed_roles TEXT DEFAULT '[]', PRIMARY KEY (guild_id, command_name));
   CREATE TABLE IF NOT EXISTS log_settings (guild_id TEXT, log_type TEXT, enabled INTEGER DEFAULT 1, channel_id TEXT, PRIMARY KEY (guild_id, log_type));
+  CREATE TABLE IF NOT EXISTS keyword_logs (guild_id TEXT, trigger TEXT, PRIMARY KEY (guild_id, trigger));
 `);
 
 module.exports = db;
