@@ -1468,9 +1468,10 @@ async function handlePanelButton(interaction) {
 }
 
 async function handlePanelModal(interaction) {
-  const access = hasPanelAccess(interaction.member);
-  if (!access) return interaction.reply({ content: 'You do not have permission to modify settings.', ephemeral: true });
-  const id = interaction.customId;
+  try {
+    const access = hasPanelAccess(interaction.member);
+    if (!access) return interaction.reply({ content: 'You do not have permission to modify settings.', ephemeral: true });
+    const id = interaction.customId;
 
   if (id === 'modal_warncount') {
     const count = parseInt(interaction.fields.getTextInputValue('count'));
@@ -1701,19 +1702,22 @@ async function handlePanelModal(interaction) {
   }
 
   if (id === 'modal_giveaway') {
-    const prize = interaction.fields.getTextInputValue('prize');
-    const duration = interaction.fields.getTextInputValue('duration');
-    const winnersStr = interaction.fields.getTextInputValue('winners');
-    const winners = parseInt(winnersStr);
-    const sec = getTimeSeconds(duration);
-    if (!prize || !sec || sec < 60 || isNaN(winners) || winners < 1) {
-      return interaction.reply({ content: 'Invalid inputs. Prize required, duration min 1m, winners min 1.', ephemeral: true });
-    }
-    const endsAt = Date.now() + sec * 1000;
-    const msg = await interaction.channel.send({ content: `\uD83C\uDF89 **Giveaway: ${prize}**\nReact \uD83C\uDF89 to enter!\nEnds: <t:${Math.floor(endsAt / 1000)}:R>` });
-    await msg.react('\uD83C\uDF89');
-    db.prepare('INSERT INTO giveaways VALUES (?,?,?,?,?,?,?,?)').run(msg.id, interaction.guildId, interaction.channel.id, prize, winners, endsAt, interaction.user.id, '[]');
-    await interaction.update(panelGiveaway(interaction));
+    try {
+      const prize = interaction.fields.getTextInputValue('prize');
+      const duration = interaction.fields.getTextInputValue('duration');
+      const winnersStr = interaction.fields.getTextInputValue('winners');
+      const winners = parseInt(winnersStr);
+      const sec = getTimeSeconds(duration);
+      if (!prize || !sec || sec < 60 || isNaN(winners) || winners < 1) {
+        return interaction.reply({ content: 'Invalid inputs. Prize required, duration min 1m, winners min 1.', ephemeral: true });
+      }
+      await interaction.deferUpdate();
+      const endsAt = Date.now() + sec * 1000;
+      const msg = await interaction.channel.send({ content: `\uD83C\uDF89 **Giveaway: ${prize}**\nReact \uD83C\uDF89 to enter!\nEnds: <t:${Math.floor(endsAt / 1000)}:R>` });
+      await msg.react('\uD83C\uDF89');
+      db.prepare('INSERT INTO giveaways VALUES (?,?,?,?,?,?,?,?)').run(msg.id, interaction.guildId, interaction.channel.id, prize, winners, endsAt, interaction.user.id, '[]');
+    } catch {}
+    try { await interaction.editReply({ embeds: [panelGiveaway(interaction).embeds[0]], components: panelGiveaway(interaction).components }); } catch {}
     return;
   }
 
@@ -1741,6 +1745,7 @@ async function handlePanelModal(interaction) {
     }
     return;
   }
+  } catch {}
 }
 
 // ── Permission helpers ──
@@ -2242,7 +2247,7 @@ client.on('interactionCreate', async (interaction) => {
     return;
   }
   if (interaction.isModalSubmit()) {
-    await handlePanelModal(interaction);
+    await handlePanelModal(interaction).catch(() => {});
     return;
   }
   if (interaction.isStringSelectMenu() && interaction.customId === 'select_log_type') {
@@ -3142,8 +3147,8 @@ client.on('messageCreate', async (msg) => {
         await checkWarnLimit(msg.guild, msg.author.id);
       } catch {}
     return;
-    }
   }
+}
 
   // ── Long message / flood detection ──
   if (content.length > (cfg.long_msg_threshold || 2000)) {
