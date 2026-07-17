@@ -1062,6 +1062,7 @@ function panelAutoReply(interaction) {
     components: [
       new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId('panel_act_autoreply').setLabel('\u2795 Add Auto-Reply').setStyle(ButtonStyle.Primary),
+        ...(rows.length ? [new ButtonBuilder().setCustomId('panel_act_autoreply_del').setLabel('\u2796 Remove').setStyle(ButtonStyle.Danger)] : []),
       ),
       new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId('panel_main').setLabel('\u2190 Back').setStyle(ButtonStyle.Secondary),
@@ -1375,8 +1376,16 @@ async function handlePanelButton(interaction) {
   ]));
   if (id === 'panel_act_autoreply') return interaction.showModal(createModal('modal_autoreply', 'Add Auto-Reply', [
     { id: 'trigger', label: 'Trigger word', placeholder: 'hello', min: 2, max: 100 },
-    { id: 'response', label: 'Bot response', placeholder: 'Hi there!', min: 1, max: 500, long: true },
+    { id: 'response', label: 'Response', placeholder: 'Hi there!', min: 1, max: 500, long: true },
   ]));
+  if (id === 'panel_act_autoreply_del') {
+    const rows = db.prepare('SELECT trigger FROM auto_replies WHERE guild_id = ?').all(interaction.guildId);
+    if (!rows.length) return interaction.reply({ content: 'No auto-replies to remove.', ephemeral: true });
+    const select = new StringSelectMenuBuilder().setCustomId('select_autoreply_del').setPlaceholder('Pick one to remove').addOptions(
+      rows.map(r => ({ label: r.trigger.length > 80 ? r.trigger.slice(0, 77) + '...' : r.trigger, value: r.trigger })),
+    );
+    return interaction.reply({ content: 'Select an auto-reply to remove:', components: [new ActionRowBuilder().addComponents(select)], ephemeral: true });
+  }
   if (id === 'panel_act_log') return interaction.showModal(createModal('modal_log', 'Set Log Channel', [{ id: 'channel', label: 'Channel ID', placeholder: 'Click channel > Copy ID', min: 17, max: 20 }]));
   if (id === 'panel_act_tag') return interaction.showModal(createModal('modal_tag', 'Set Tag Channel', [{ id: 'channel', label: 'Channel ID', placeholder: 'Click channel > Copy ID', min: 17, max: 20 }]));
   if (id === 'panel_act_ticket_cat') return interaction.showModal(createModal('modal_ticket_cat', 'Set Ticket Category', [{ id: 'cat', label: 'Category ID', placeholder: 'Category ID', min: 17, max: 20 }]));
@@ -2288,6 +2297,13 @@ client.on('interactionCreate', async (interaction) => {
     if (!hasPanelAccess(interaction.member)) return interaction.reply({ content: 'No permission.', ephemeral: true });
     db.prepare('DELETE FROM keyword_logs WHERE guild_id = ? AND trigger = ?').run(interaction.guildId, trigger);
     await interaction.reply({ content: `Trigger \`${trigger}\` removed.`, ephemeral: true });
+    return;
+  }
+  if (interaction.isStringSelectMenu() && interaction.customId === 'select_autoreply_del') {
+    const trigger = interaction.values[0];
+    if (!hasPanelAccess(interaction.member)) return interaction.reply({ content: 'No permission.', ephemeral: true });
+    db.prepare('DELETE FROM auto_replies WHERE guild_id = ? AND trigger = ?').run(interaction.guildId, trigger);
+    await interaction.reply({ content: `Auto-reply \`${trigger}\` removed.`, ephemeral: true });
     return;
   }
   if (interaction.isStringSelectMenu() && interaction.customId === 'vote') {
