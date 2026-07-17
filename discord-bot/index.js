@@ -344,7 +344,9 @@ async function handlePrefix(msg) {
   if (msg.author.bot || !msg.guild) return;
   const parsed = parsePrefix(msg.content);
   if (!parsed) return;
-  const { cmd, args } = parsed;
+  let { cmd, args } = parsed;
+  const aliasMap = { b:'ban', k:'kick', m:'mute', tm:'tempmute', tb:'tempban', pb:'permban', w:'warn', t:'timeout', ut:'untimeout', um:'unmute', r:'role', cl:'clear', sm:'slowmode', n:'nuke', l:'lock', ul:'unlock', ub:'unban', d:'deafen', ud:'undeafen', dw:'deletewarn' };
+  cmd = aliasMap[cmd] || cmd;
   const member = msg.member;
   const guild = msg.guild;
 
@@ -868,6 +870,60 @@ async function handlePrefix(msg) {
       await m.edit({ components: [], embeds: [resultEmbed] });
     } catch {}
     await msg.reply({ embeds: [resultEmbed] });
+    return;
+  }
+
+  // ── lastwarn / lastban / lastmuted ──
+  if (cmd === 'lastwarn') {
+    if (!modError(PermissionFlagsBits.ModerateMembers)) return;
+    const rows = db.prepare('SELECT * FROM warns WHERE guild_id = ? ORDER BY id DESC LIMIT 10').all(guild.id);
+    if (!rows.length) return msg.reply({ embeds: [smallEmbed('No warns recorded.')] });
+    const lines = rows.map((r, i) => `**#${i+1}** <@${r.user_id}> \u2022 ${r.reason} \u2022 <t:${Math.floor(new Date(r.created_at).getTime() / 1000)}:R>`);
+    await msg.reply({ embeds: [embed(`Last Warns (${rows.length})`, lines.join('\n'))] });
+    return;
+  }
+
+  if (cmd === 'lastban') {
+    if (!modError(PermissionFlagsBits.BanMembers)) return;
+    const since = Date.now() - 86400000;
+    const entries = await guild.fetchAuditLogs({ type: 22, limit: 20 }).catch(() => null);
+    if (!entries) return msg.reply({ embeds: [errorEmbed('Could not fetch audit logs.')] });
+    const recent = entries.entries.filter(e => e.createdTimestamp > since);
+    if (!recent.size) return msg.reply({ embeds: [smallEmbed('No bans in the last 24 hours.')] });
+    const lines = [...recent.values()].slice(0, 10).map(e => `\u2022 **${e.target?.tag || 'Unknown'}** (\`${e.targetId}\`) \u2022 ${e.reason || 'No reason'} \u2022 <t:${Math.floor(e.createdTimestamp / 1000)}:R>`);
+    await msg.reply({ embeds: [embed(`Recent Bans (Last 24h)`, lines.join('\n'))] });
+    return;
+  }
+
+  if (cmd === 'lastmuted') {
+    if (!modError(PermissionFlagsBits.ModerateMembers)) return;
+    const since = Date.now() - 86400000;
+    const entries = await guild.fetchAuditLogs({ type: 24, limit: 20 }).catch(() => null);
+    if (!entries) return msg.reply({ embeds: [errorEmbed('Could not fetch audit logs.')] });
+    const recent = entries.entries.filter(e => e.createdTimestamp > since);
+    if (!recent.size) return msg.reply({ embeds: [smallEmbed('No mutes in the last 24 hours.')] });
+    const lines = [...recent.values()].slice(0, 10).map(e => `\u2022 **${e.target?.tag || 'Unknown'}** (\`${e.targetId}\`) \u2022 ${e.reason || 'No reason'} \u2022 <t:${Math.floor(e.createdTimestamp / 1000)}:R>`);
+    await msg.reply({ embeds: [embed(`Recent Mutes (Last 24h)`, lines.join('\n'))] });
+    return;
+  }
+
+  // ── deletewarn / dwarn ──
+  if (cmd === 'deletewarn') {
+    if (!modError(PermissionFlagsBits.ModerateMembers)) return;
+    const target = await modTarget();
+    if (!target) return;
+    const arg = args.find(a => a === 'all' || /^\d+$/.test(a));
+    if (!arg) return msg.reply({ embeds: [errorEmbed('Usage: `,deletewarn <user> [all|count]`')] });
+    if (arg === 'all') {
+      db.prepare('DELETE FROM warns WHERE guild_id = ? AND user_id = ?').run(guild.id, target.id);
+      await msg.reply({ embeds: [smallEmbed(`All warns cleared for ${target.tag}.`)] });
+    } else {
+      const count = parseInt(arg);
+      const rows = db.prepare('SELECT id FROM warns WHERE guild_id = ? AND user_id = ? ORDER BY id DESC LIMIT ?').all(guild.id, target.id, count);
+      if (!rows.length) return msg.reply({ embeds: [errorEmbed('No warns to delete.')] });
+      for (const r of rows) db.prepare('DELETE FROM warns WHERE id = ?').run(r.id);
+      await msg.reply({ embeds: [smallEmbed(`**${rows.length}** warn(s) deleted for ${target.tag}.`)] });
+    }
     return;
   }
 }
@@ -2348,10 +2404,10 @@ async function handleSlash(interaction) {
   if (cmd === 'help') {
     const embed = new EmbedBuilder().setColor(0x000000).setTitle('NEXUS').setDescription('Your all-in-one Discord bot').setFooter({ text: 'Prefix: ,' });
     embed.addFields(
-      { name: 'Everyone', value: '`/help` `,help` \u2022 `/panel` `,panel` \u2022 `/userinfo` `,userinfo` \u2022 `/serverinfo` \u2022 `/avatar` \u2022 `/banner` \u2022 `/afk` `,afk` \u2022 `/remind` `,remind` \u2022 `/ticket` `,ticket` \u2022 `/entervc` `,entervc` \u2022 `/leavevc` `,leavevc` \u2022 `/subscribe` `,subscribe`', inline: false },
+      { name: 'Everyone', value: '`/help` `,help` \u2022 `/panel` `,panel` \u2022 `/userinfo` `,ui` \u2022 `/serverinfo` `,si` \u2022 `/avatar` `,av` \u2022 `/banner` \u2022 `/afk` `,afk` \u2022 `/remind` `,remind` \u2022 `/ticket` `,ticket` \u2022 `/entervc` `,entervc` \u2022 `/leavevc` `,leavevc` \u2022 `/subscribe` `,subscribe` \u2022 `/lastwarn` `,lastwarn` \u2022 `/lastban` `,lastban` \u2022 `/lastmuted` `,lastmuted`', inline: false },
       { name: 'Polls', value: '`/poll` `,poll` \u2022 `/endpoll` `,endpoll` \u2022 `/activepolls` `,activepolls` \u2022 `/history` `,history` (Owner + Staff only)', inline: false },
       { name: 'Giveaways', value: '`/giveaway` `,giveaway` \u2022 `/endgiveaway` `,endgiveaway` \u2022 `/reroll` `,reroll` (Owner only) \u2014 Panel: Log > Giveaways tab', inline: false },
-      { name: 'Moderation', value: '`,warn` \u2022 `,ban` \u2022 `,kick` \u2022 `,mute` \u2022 `,timeout` \u2022 `,clear` \u2022 `,nuke` \u2022 `,role` \u2022 `,lock` \u2022 `,unlock` \u2022 `,slowmode` \u2022 `,voicekick` \u2022 `,snipe` \u2022 `,deafen` \u2022 `,nick` `,nick` \u2022 `/setlog` `,setlog` \u2022 `/tagchannel` `,tagchannel` \u2022 `/warncount` `,warncount` \u2022 `/warnsetting` `,warnsetting`', inline: false },
+      { name: 'Moderation', value: '`,w`(warn) `,b`(ban) `,tb`(tempban) `,k`(kick) `,m`(mute) `,t`(timeout) `,cl`(clear) `,n`(nuke) `,r`(role) `,l`(lock) `,ul`(unlock) `,sm`(slowmode) `,vk`(voicekick) `,s`(snipe) `,d`(deafen) \u2022 `,deletewarn` `,dw` \u2022 `/deletewarn`', inline: false },
       { name: 'Auto-Mod', value: '`,warnword` \u2022 `,muteword` \u2022 `,addword` `,addword` \u2022 `/banword` \u2022 `/muteword` \u2014 Panel: Protect > Filters', inline: false },
       { name: 'Settings', value: '`/panel` \u2192 All config (log types, anti-spam, tickets, AI, perms, keyword triggers, auto-replies) \u2022 `/settings` `,settings`', inline: false },
       { name: 'Owner', value: '`,roleall` \u2022 `,removeall` \u2022 `,say` \u2022 `,emoji` \u2022 `/rules` `,rules` \u2022 `/announce` \u2022 `/sendmessage` \u2022 `/roleall` \u2022 `/removeall`', inline: false },
@@ -2954,6 +3010,68 @@ async function handleSlash(interaction) {
     await interaction.reply({ embeds: [new EmbedBuilder().setColor(0x2b2d31).setTitle(`${user.tag}'s Banner`).setImage(banner)] });
     return;
   }
+
+  // ── lastwarn / lastban / lastmuted ──
+  if (cmd === 'lastwarn') {
+    if (!checkPerms(interaction.member, PermissionFlagsBits.ModerateMembers)) {
+      return interaction.reply({ embeds: [errorEmbed('Moderate Members permission required.')], ephemeral: true });
+    }
+    const rows = db.prepare('SELECT * FROM warns WHERE guild_id = ? ORDER BY id DESC LIMIT 10').all(interaction.guildId);
+    if (!rows.length) return interaction.reply({ embeds: [smallEmbed('No warns recorded.')], ephemeral: true });
+    const lines = rows.map((r, i) => `**#${i+1}** <@${r.user_id}> \u2022 ${r.reason} \u2022 <t:${Math.floor(new Date(r.created_at).getTime() / 1000)}:R>`);
+    await interaction.reply({ embeds: [embed(`Last Warns (${rows.length})`, lines.join('\n'))], ephemeral: true });
+    return;
+  }
+
+  if (cmd === 'lastban') {
+    if (!checkPerms(interaction.member, PermissionFlagsBits.BanMembers)) {
+      return interaction.reply({ embeds: [errorEmbed('Ban Members permission required.')], ephemeral: true });
+    }
+    const since = Date.now() - 86400000;
+    const entries = await interaction.guild.fetchAuditLogs({ type: 22, limit: 20 }).catch(() => null);
+    if (!entries) return interaction.reply({ embeds: [errorEmbed('Could not fetch audit logs.')], ephemeral: true });
+    const recent = entries.entries.filter(e => e.createdTimestamp > since);
+    if (!recent.size) return interaction.reply({ embeds: [smallEmbed('No bans in the last 24 hours.')], ephemeral: true });
+    const lines = [...recent.values()].slice(0, 10).map(e => `\u2022 **${e.target?.tag || 'Unknown'}** (\`${e.targetId}\`) \u2022 ${e.reason || 'No reason'} \u2022 <t:${Math.floor(e.createdTimestamp / 1000)}:R>`);
+    await interaction.reply({ embeds: [embed(`Recent Bans (Last 24h)`, lines.join('\n'))], ephemeral: true });
+    return;
+  }
+
+  if (cmd === 'lastmuted') {
+    if (!checkPerms(interaction.member, PermissionFlagsBits.ModerateMembers)) {
+      return interaction.reply({ embeds: [errorEmbed('Moderate Members permission required.')], ephemeral: true });
+    }
+    const since = Date.now() - 86400000;
+    const entries = await interaction.guild.fetchAuditLogs({ type: 24, limit: 20 }).catch(() => null);
+    if (!entries) return interaction.reply({ embeds: [errorEmbed('Could not fetch audit logs.')], ephemeral: true });
+    const recent = entries.entries.filter(e => e.createdTimestamp > since);
+    if (!recent.size) return interaction.reply({ embeds: [smallEmbed('No mutes in the last 24 hours.')], ephemeral: true });
+    const lines = [...recent.values()].slice(0, 10).map(e => `\u2022 **${e.target?.tag || 'Unknown'}** (\`${e.targetId}\`) \u2022 ${e.reason || 'No reason'} \u2022 <t:${Math.floor(e.createdTimestamp / 1000)}:R>`);
+    await interaction.reply({ embeds: [embed(`Recent Mutes (Last 24h)`, lines.join('\n'))], ephemeral: true });
+    return;
+  }
+
+  // ── deletewarn ──
+  if (cmd === 'deletewarn') {
+    if (!checkPerms(interaction.member, PermissionFlagsBits.ModerateMembers)) {
+      return interaction.reply({ embeds: [errorEmbed('Moderate Members permission required.')], ephemeral: true });
+    }
+    const user = interaction.options.getUser('user');
+    if (!user) return interaction.reply({ content: 'Provide a user.', ephemeral: true });
+    const count = interaction.options.getString('count') || '1';
+    if (count === 'all') {
+      db.prepare('DELETE FROM warns WHERE guild_id = ? AND user_id = ?').run(interaction.guildId, user.id);
+      await interaction.reply({ embeds: [smallEmbed(`All warns cleared for ${user.tag}.`)], ephemeral: true });
+    } else {
+      const num = parseInt(count);
+      if (isNaN(num) || num < 1) return interaction.reply({ content: 'Count must be a number or "all".', ephemeral: true });
+      const rows = db.prepare('SELECT id FROM warns WHERE guild_id = ? AND user_id = ? ORDER BY id DESC LIMIT ?').all(interaction.guildId, user.id, num);
+      if (!rows.length) return interaction.reply({ embeds: [errorEmbed('No warns to delete.')], ephemeral: true });
+      for (const r of rows) db.prepare('DELETE FROM warns WHERE id = ?').run(r.id);
+      await interaction.reply({ embeds: [smallEmbed(`**${rows.length}** warn(s) deleted for ${user.tag}.`)], ephemeral: true });
+    }
+    return;
+  }
 }
 
 // ─────────────────────────────── AI CHAT ───────────────────────────────
@@ -3149,10 +3267,10 @@ client.on('messageCreate', async (msg) => {
   if (cmd === 'help') {
     const embed = new EmbedBuilder().setColor(0x000000).setTitle('NEXUS').setDescription('Your all-in-one Discord bot').setFooter({ text: 'Prefix: ,' });
     embed.addFields(
-      { name: 'Everyone', value: '`/help`, `/panel`, `/userinfo`, `/serverinfo`, `/avatar`, `/banner`, `/afk`, `/remind`, `/ticket`, `/entervc`, `/leavevc`', inline: false },
+      { name: 'Everyone', value: '`/help` `,help` \u2022 `/panel` `,panel` \u2022 `/userinfo` `,ui` \u2022 `/serverinfo` `,si` \u2022 `/avatar` `,av` \u2022 `/banner` \u2022 `/afk` `,afk` \u2022 `/remind` `,remind` \u2022 `/ticket` `,ticket` \u2022 `/entervc` `,entervc` \u2022 `/leavevc` `,leavevc` \u2022 `/subscribe` `,subscribe` \u2022 `/lastwarn` `,lastwarn` \u2022 `/lastban` `,lastban` \u2022 `/lastmuted` `,lastmuted`', inline: false },
       { name: 'Polls', value: '`/poll`, `/endpoll`, `/activepolls`, `/history` (Owner + Staff only) `,endpoll`', inline: false },
       { name: 'Giveaways', value: '`/giveaway`, `/endgiveaway`, `/reroll` (Owner only) \u2014 Panel: Log > Giveaways tab', inline: false },
-      { name: 'Moderation', value: '`,warn`, `,ban`, `,kick`, `,mute`, `,timeout`, `,clear`, `,nuke`, `,role`, `,lock`, `,unlock`, `,slowmode`, `,voicekick`, `,snipe`', inline: false },
+      { name: 'Moderation', value: '`,w`(warn) `,b`(ban) `,tb`(tempban) `,k`(kick) `,m`(mute) `,t`(timeout) `,cl`(clear) `,n`(nuke) `,r`(role) `,l`(lock) `,ul`(unlock) `,sm`(slowmode) `,vk`(voicekick) `,s`(snipe) `,d`(deafen) \u2022 `,deletewarn` `,dw` \u2022 `/deletewarn`', inline: false },
       { name: 'Auto-Mod', value: '`,warnword`, `,muteword`, `,addword` \u2014 Panel: Protect > Filters', inline: false },
       { name: 'Settings', value: '`/panel` \u2192 All config (log types, anti-spam, tickets, AI, perms, keyword triggers, auto-replies)', inline: false },
     );
