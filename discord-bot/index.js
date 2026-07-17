@@ -1542,39 +1542,51 @@ async function handlePanelModal(interaction) {
 
   if (id === 'modal_log') {
     const channelId = interaction.fields.getTextInputValue('channel').replace(/[<#>]/g, '');
-    const channel = interaction.guild.channels.cache.get(channelId);
-    if (!channel || (channel.type !== ChannelType.GuildText && channel.type !== ChannelType.GuildAnnouncement)) {
-      return interaction.reply({ content: 'Invalid channel ID or not a text channel.', ephemeral: true });
+    try {
+      const channel = await interaction.guild.channels.fetch(channelId);
+      if (!channel || (channel.type !== ChannelType.GuildText && channel.type !== ChannelType.GuildAnnouncement)) {
+        return interaction.reply({ content: 'Invalid channel ID or not a text channel.', ephemeral: true });
+      }
+      ensureConfig(interaction.guildId);
+      setConfig(interaction.guildId, 'log_channel_id', channelId);
+      await interaction.update(panelLog(interaction));
+      await sendModLog(interaction.guild, { Action: 'Log Channel Set', Moderator: interaction.user.tag, Channel: `<#${channelId}>` });
+    } catch {
+      await interaction.reply({ content: 'Could not find that channel. Use a valid text channel ID.', ephemeral: true });
     }
-    ensureConfig(interaction.guildId);
-    setConfig(interaction.guildId, 'log_channel_id', channelId);
-    await interaction.update(panelLog(interaction));
-    await sendModLog(interaction.guild, { Action: 'Log Channel Set', Moderator: interaction.user.tag, Channel: `<#${channelId}>` });
     return;
   }
 
   if (id === 'modal_tag') {
     const channelId = interaction.fields.getTextInputValue('channel').replace(/[<#>]/g, '');
-    const channel = interaction.guild.channels.cache.get(channelId);
-    if (!channel || (channel.type !== ChannelType.GuildText && channel.type !== ChannelType.GuildAnnouncement)) {
-      return interaction.reply({ content: 'Invalid channel ID.', ephemeral: true });
+    try {
+      const channel = await interaction.guild.channels.fetch(channelId);
+      if (!channel || (channel.type !== ChannelType.GuildText && channel.type !== ChannelType.GuildAnnouncement)) {
+        return interaction.reply({ content: 'Invalid channel ID.', ephemeral: true });
+      }
+      ensureConfig(interaction.guildId);
+      setConfig(interaction.guildId, 'tag_channel_id', channelId);
+      await interaction.update(panelTag(interaction));
+      await sendModLog(interaction.guild, { Action: 'Tag Channel Set', Moderator: interaction.user.tag, Channel: `<#${channelId}>` });
+    } catch {
+      await interaction.reply({ content: 'Could not find that channel.', ephemeral: true });
     }
-    ensureConfig(interaction.guildId);
-    setConfig(interaction.guildId, 'tag_channel_id', channelId);
-    await interaction.update(panelTag(interaction));
-    await sendModLog(interaction.guild, { Action: 'Tag Channel Set', Moderator: interaction.user.tag, Channel: `<#${channelId}>` });
     return;
   }
 
   if (id === 'modal_ticket_cat') {
     const catId = interaction.fields.getTextInputValue('cat');
-    const cat = interaction.guild.channels.cache.get(catId);
-    if (!cat || cat.type !== ChannelType.GuildCategory) {
-      return interaction.reply({ content: 'Invalid category ID.', ephemeral: true });
+    try {
+      const cat = await interaction.guild.channels.fetch(catId);
+      if (!cat || cat.type !== ChannelType.GuildCategory) {
+        return interaction.reply({ content: 'Invalid category ID.', ephemeral: true });
+      }
+      db.prepare('INSERT OR REPLACE INTO ticket_config (guild_id, category_id, role_id) VALUES (?,?,COALESCE((SELECT role_id FROM ticket_config WHERE guild_id = ?),NULL))')
+        .run(interaction.guildId, catId, interaction.guildId);
+      await interaction.update(panelTicket(interaction));
+    } catch {
+      await interaction.reply({ content: 'Could not find that category.', ephemeral: true });
     }
-    db.prepare('INSERT OR REPLACE INTO ticket_config (guild_id, category_id, role_id) VALUES (?,?,COALESCE((SELECT role_id FROM ticket_config WHERE guild_id = ?),NULL))')
-      .run(interaction.guildId, catId, interaction.guildId);
-    await interaction.update(panelTicket(interaction));
     return;
   }
 
@@ -2078,7 +2090,7 @@ client.on('interactionCreate', async (interaction) => {
     return;
   }
   if (interaction.isButton()) {
-    if (interaction.customId.startsWith('panel_')) return handlePanelButton(interaction);
+    if (interaction.customId.startsWith('panel_')) { await handlePanelButton(interaction).catch(() => {}); return; }
     if (interaction.customId.startsWith('log_toggle_') || interaction.customId.startsWith('log_channel_') || interaction.customId.startsWith('log_reset_')) {
       const access = hasPanelAccess(interaction.member);
       if (!access) return interaction.reply({ content: 'No permission.', ephemeral: true });
