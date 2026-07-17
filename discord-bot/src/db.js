@@ -43,6 +43,9 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS custom_commands (guild_id TEXT, name TEXT, response TEXT, PRIMARY KEY (guild_id, name));
   CREATE TABLE IF NOT EXISTS public_commands (guild_id TEXT, cmd TEXT, PRIMARY KEY (guild_id, cmd));
   CREATE TABLE IF NOT EXISTS giveaways (message_id TEXT PRIMARY KEY, guild_id TEXT, channel_id TEXT, prize TEXT, winners INTEGER, ends_at INTEGER, host_id TEXT, entries TEXT);
+  CREATE TABLE IF NOT EXISTS mod_roles (guild_id TEXT, role_id TEXT, permissions TEXT DEFAULT '{}', PRIMARY KEY (guild_id, role_id));
+  CREATE TABLE IF NOT EXISTS command_permissions (guild_id TEXT, command_name TEXT, allowed_roles TEXT DEFAULT '[]', PRIMARY KEY (guild_id, command_name));
+  CREATE TABLE IF NOT EXISTS log_settings (guild_id TEXT, log_type TEXT, enabled INTEGER DEFAULT 1, channel_id TEXT, PRIMARY KEY (guild_id, log_type));
 `);
 
 module.exports = db;

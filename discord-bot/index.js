@@ -157,17 +157,65 @@ async function notifySubscribers(pollData, pollUrl, guild) {
 
 // ─────────────────────────────── LOG & UTILITY ───────────────────────────────
 
-async function sendModLog(guild, fields) {
-  const logId = db.prepare('SELECT log_channel_id FROM config WHERE guild_id = ?').get(guild.id)?.log_channel_id;
-  if (!logId) return;
+const LOG_TYPES = {
+  MESSAGE_DELETE: 'message_delete',
+  MESSAGE_EDIT: 'message_edit',
+  MEMBER_JOIN: 'member_join',
+  MEMBER_LEAVE: 'member_leave',
+  MEMBER_BAN: 'member_ban',
+  MEMBER_UNBAN: 'member_unban',
+  MEMBER_ROLE: 'member_role',
+  MEMBER_NICKNAME: 'member_nickname',
+  MEMBER_TIMEOUT: 'member_timeout',
+  VOICE: 'voice',
+  CHANNEL_CREATE: 'channel_create',
+  CHANNEL_DELETE: 'channel_delete',
+  CHANNEL_UPDATE: 'channel_update',
+  INVITE_CREATE: 'invite_create',
+  INVITE_DELETE: 'invite_delete',
+  EMOJI: 'emoji',
+  BULK_DELETE: 'bulk_delete',
+  MODERATION: 'moderation',
+};
+
+const LOG_NAMES = {
+  message_delete: 'Deleted Messages',
+  message_edit: 'Edited Messages',
+  member_join: 'Member Joins',
+  member_leave: 'Member Leaves',
+  member_ban: 'Member Bans',
+  member_unban: 'Member Unbans',
+  member_role: 'Role Changes',
+  member_nickname: 'Nickname Changes',
+  member_timeout: 'Timeout/Mute Changes',
+  voice: 'Voice Events',
+  channel_create: 'Channel Created',
+  channel_delete: 'Channel Deleted',
+  channel_update: 'Channel Updated',
+  invite_create: 'Invite Created',
+  invite_delete: 'Invite Deleted',
+  emoji: 'Emoji/Sticker Changes',
+  bulk_delete: 'Bulk Message Delete',
+  moderation: 'Moderation Actions',
+};
+
+async function sendLog(guild, logType, embed) {
+  const cfg = db.prepare('SELECT enabled, channel_id FROM log_settings WHERE guild_id = ? AND log_type = ?').get(guild.id, logType);
+  if (cfg && !cfg.enabled) return;
+  const channelId = cfg?.channel_id || db.prepare('SELECT log_channel_id FROM config WHERE guild_id = ?').get(guild.id)?.log_channel_id;
+  if (!channelId) return;
   try {
-    const channel = await guild.channels.fetch(logId);
-    const e = new EmbedBuilder().setColor(0x2b2d31).setTimestamp();
-    for (const [name, value] of Object.entries(fields)) {
-      e.addFields({ name, value: String(value), inline: true });
-    }
-    await channel.send({ embeds: [e] });
+    const channel = await guild.channels.fetch(channelId);
+    await channel.send({ embeds: [embed.setTimestamp()] });
   } catch {}
+}
+
+async function sendModLog(guild, fields) {
+  const e = new EmbedBuilder().setColor(0x2b2d31);
+  for (const [name, value] of Object.entries(fields)) {
+    e.addFields({ name, value: String(value), inline: true });
+  }
+  await sendLog(guild, LOG_TYPES.MODERATION, e);
 }
 
 const recentMessages = new Map();
@@ -822,51 +870,65 @@ function panelMain(interaction) {
   const aiCfg = db.prepare('SELECT * FROM ai_config WHERE guild_id = ?').get(interaction.guildId);
   const cfg = db.prepare('SELECT * FROM config WHERE guild_id = ?').get(interaction.guildId) || {};
   const ticketCfg = db.prepare('SELECT * FROM ticket_config WHERE guild_id = ?').get(interaction.guildId);
+  const access = hasPanelAccess(interaction.member);
+  const modRoleCount = db.prepare('SELECT COUNT(*) as c FROM mod_roles WHERE guild_id = ?').get(interaction.guildId).c;
 
   const desc = [
     `**${interaction.guild.name}** \u2014 ${interaction.guild.memberCount} members`,
-    `\u23F1 Uptime: ${Math.floor(process.uptime() / 60)}m`,
+    `\u23F1 Uptime: ${Math.floor(process.uptime() / 60)}m | **${access}** access`,
     '',
-    `\uD83D\uDCCA **Stats**`,
+    `\uD83D\uDCCA **Server Stats**`,
     `  \u2022 Polls: **${pollCount}** active / **${db.prepare('SELECT COUNT(*) as c FROM history WHERE guild_id = ?').get(interaction.guildId).c}** archived`,
     `  \u2022 Warns: **${totalWarns}** total | Temp Bans: **${activeBans}** | Subs: **${subs}**`,
     '',
-    `\u2699\uFE0F **Config**`,
-    `  \u2022 Warn: **${wsCount}** \u2192 **${wsAction}**${wsAction === 'mute' ? ` (${ws?.mute_duration || '1h'})` : ''}`,
-    `  \u2022 Filters: **${banWords}** ban / **${muteWords}** mute`,
-    `  \u2022 Anti-Spam: **${cfg.anti_spam_max || 5}**msgs/**${cfg.anti_spam_window || 4}s**`,
-    `  \u2022 Anti-Invite: **${cfg.anti_invite !== 0 ? 'ON' : 'OFF'}**${cfg.anti_invite !== 0 ? ` (\u2192${cfg.invite_warns || 2}w + ${cfg.invite_mute || 600}s mute)` : ''}`,
+    `\uD83D\uDEE1\uFE0F **Protection**`,
+    `  \u2022 Anti-Spam: **${cfg.anti_spam_max || 5}** msgs / **${cfg.anti_spam_window || 4}s**`,
+    `  \u2022 Anti-Invite: **${cfg.anti_invite !== 0 ? 'ON' : 'OFF'}**`,
+    `  \u2022 Word Filters: **${banWords}** ban / **${muteWords}** mute`,
+    '',
+    `\u2699\uFE0F **Moderation**`,
+    `  \u2022 Warn: **${wsCount}** \u2192 **${wsAction}**`,
+    `  \u2022 AI: ${aiCfg ? `**${aiCfg.provider}**` : 'Not configured'}`,
+    `  \u2022 Tickets: ${ticketCfg ? 'Ready' : 'Not configured'}`,
+    '',
+    `\uD83D\uDCDD **Logging**`,
     `  \u2022 Log: ${logChanId ? `<#${logChanId}>` : 'Not set'}`,
     `  \u2022 Tag: ${tagChanId ? `<#${tagChanId}>` : 'Not set'}`,
-    `  \u2022 AI: ${aiCfg ? `**${aiCfg.provider}**` : 'Not configured'}`,
-    `  \u2022 Tickets: ${ticketCfg ? `Ready` : 'Not configured'}`,
+    '',
+    `\uD83D\uDD11 **Permissions**`,
+    `  \u2022 Mod Roles: **${modRoleCount}** configured`,
+    `  \u2022 Access: ${access ? '**Granted**' : 'View only'}`,
   ].join('\n');
 
   const btn = (id, label, style) => new ButtonBuilder().setCustomId(id).setLabel(label).setStyle(style);
 
-  return {
-    embeds: [new EmbedBuilder().setColor(0x2b2d31).setTitle('\uD83D\uDEE1\uFE0F Admin Panel').setDescription(desc)],
-    components: [
-      new ActionRowBuilder().addComponents(
-        btn('panel_polls', '\uD83D\uDCCA Polls', ButtonStyle.Secondary),
-        btn('panel_warns', '\u26A0\uFE0F Warns', ButtonStyle.Secondary),
-        btn('panel_words', '\uD83D\uDD0D Filters', ButtonStyle.Secondary),
-        btn('panel_autoreply', '\uD83E\uDD16 Auto', ButtonStyle.Secondary),
-        btn('panel_antispam', '\uD83D\uDEE1\uFE0F Anti', ButtonStyle.Secondary),
-      ),
-      new ActionRowBuilder().addComponents(
-        btn('panel_log', '\uD83D\uDCDD Log', ButtonStyle.Secondary),
-        btn('panel_tag', '\uD83D\uDC4B Tag', ButtonStyle.Secondary),
-        btn('panel_ticket', '\uD83C\uDFAB Ticket', ButtonStyle.Secondary),
-        btn('panel_ai', '\uD83E\uDD16 AI', ButtonStyle.Secondary),
-        btn('panel_bans', '\uD83D\uDD28 Bans', ButtonStyle.Secondary),
-      ),
-      new ActionRowBuilder().addComponents(
-        btn('panel_stats', '\uD83D\uDCC8 Stats', ButtonStyle.Secondary),
-        btn('panel_close', '\u274C Close', ButtonStyle.Danger),
-      ),
-    ],
-  };
+  const rows = [
+    new ActionRowBuilder().addComponents(
+      btn('panel_polls', '\uD83D\uDCCA Polls', ButtonStyle.Secondary),
+      btn('panel_warns', '\u26A0\uFE0F Warns', ButtonStyle.Secondary),
+      btn('panel_words', '\uD83D\uDD0D Filters', ButtonStyle.Secondary),
+      btn('panel_antispam', '\uD83D\uDEE1\uFE0F Protect', ButtonStyle.Secondary),
+    ),
+    new ActionRowBuilder().addComponents(
+      btn('panel_autoreply', '\uD83E\uDD16 Auto-Reply', ButtonStyle.Secondary),
+      btn('panel_ticket', '\uD83C\uDFAB Tickets', ButtonStyle.Secondary),
+      btn('panel_ai', '\uD83E\uDD16 AI Chat', ButtonStyle.Secondary),
+      btn('panel_bans', '\uD83D\uDD28 Bans', ButtonStyle.Secondary),
+    ),
+    new ActionRowBuilder().addComponents(
+      btn('panel_log', '\uD83D\uDCDD Log', ButtonStyle.Secondary),
+      btn('panel_tag', '\uD83D\uDC4B Tag', ButtonStyle.Secondary),
+      btn('panel_permissions', '\uD83D\uDD11 Perms', access ? ButtonStyle.Primary : ButtonStyle.Secondary),
+      btn('panel_stats', '\uD83D\uDCC8 Stats', ButtonStyle.Secondary),
+    ),
+    new ActionRowBuilder().addComponents(
+      btn('panel_giveaway', '\uD83C\uDF89 Giveaways', ButtonStyle.Secondary),
+      btn('panel_refresh', '\uD83D\uDD04 Refresh', ButtonStyle.Secondary),
+      btn('panel_close', '\u274C Close', ButtonStyle.Danger),
+    ),
+  ];
+
+  return { embeds: [new EmbedBuilder().setColor(0x2b2d31).setTitle('\uD83D\uDEE1\uFE0F Admin Panel').setDescription(desc)], components: rows };
 }
 
 function panelStats(interaction) {
@@ -1007,13 +1069,42 @@ function panelAutoReply(interaction) {
 
 function panelLog(interaction) {
   const logChanId = db.prepare('SELECT log_channel_id FROM config WHERE guild_id = ?').get(interaction.guildId)?.log_channel_id;
-  const desc = logChanId ? `Log channel: <#${logChanId}>` : 'No log channel set.';
+  const allSettings = db.prepare('SELECT * FROM log_settings WHERE guild_id = ?').all(interaction.guildId);
+  const settingsMap = {};
+  for (const s of allSettings) settingsMap[s.log_type] = s;
+  const access = hasPanelAccess(interaction.member);
+
+  const desc = [
+    `**Main Log Channel:** ${logChanId ? `<#${logChanId}>` : 'Not set'}`,
+    '',
+    '**Log Types**',
+    ...Object.entries(LOG_NAMES).map(([key, label]) => {
+      const s = settingsMap[key];
+      const enabled = s ? s.enabled === 1 : true;
+      const chanSuffix = s?.channel_id ? ` → <#${s.channel_id}>` : '';
+      return `  ${enabled ? '🟢' : '🔴'} **${label}**${chanSuffix}`;
+    }),
+    '',
+    '*Use the dropdown to toggle a log type or set a separate channel.*',
+  ].join('\n');
+
+  const select = new StringSelectMenuBuilder().setCustomId('select_log_type').setPlaceholder('Select a log type...').addOptions(
+    Object.entries(LOG_NAMES).map(([key, label]) => {
+      const s = settingsMap[key];
+      const enabled = s ? s.enabled === 1 : true;
+      return { label: `${enabled ? '🟢' : '🔴'} ${label}`, value: key, description: enabled ? 'Click to configure' : 'Currently disabled' };
+    }),
+  );
 
   return {
-    embeds: [new EmbedBuilder().setColor(0x2b2d31).setTitle('\uD83D\uDCDD Log Channel').setDescription(desc)],
+    embeds: [new EmbedBuilder().setColor(0x2b2d31).setTitle('\uD83D\uDCDD Log System').setDescription(desc)],
     components: [
+      ...(access ? [new ActionRowBuilder().addComponents(
+        select,
+      )] : []),
       new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId('panel_act_log').setLabel('\uD83D\uDD0D Set Log Channel').setStyle(ButtonStyle.Primary),
+        ...(access ? [new ButtonBuilder().setCustomId('panel_act_log').setLabel(logChanId ? '\uD83D\uDD04 Change Main Channel' : '\uD83D\uDD0D Set Main Channel').setStyle(ButtonStyle.Primary)] : []),
+        new ButtonBuilder().setCustomId('panel_act_log_reset').setLabel('\uD83D\uDD04 Reset All').setStyle(ButtonStyle.Danger),
       ),
       new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId('panel_main').setLabel('\u2190 Back').setStyle(ButtonStyle.Secondary),
@@ -1079,12 +1170,76 @@ function panelAI(interaction) {
   const desc = cfg
     ? `Provider: **${cfg.provider}**\nModel: ${cfg.model || 'Default'}\nChannel: ${cfg.channel_id ? `<#${cfg.channel_id}>` : 'All channels'}\nAPI Key: ${cfg.api_key ? cfg.api_key.slice(0, 8) + '...' : 'Not set'}`
     : 'AI not configured.';
+  const access = hasPanelAccess(interaction.member);
   return {
     embeds: [new EmbedBuilder().setColor(0x2b2d31).setTitle('\uD83E\uDD16 AI Chat').setDescription(desc)],
     components: [
       new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId('panel_act_ai').setLabel(cfg ? '\u2699\uFE0F Reconfigure' : '\u2795 Configure').setStyle(ButtonStyle.Primary),
-        ...(cfg ? [new ButtonBuilder().setCustomId('panel_act_ai_disable').setLabel('\u274C Disable').setStyle(ButtonStyle.Danger)] : []),
+        ...(access ? [new ButtonBuilder().setCustomId('panel_act_ai').setLabel(cfg ? '\u2699\uFE0F Reconfigure' : '\u2795 Configure').setStyle(ButtonStyle.Primary)] : []),
+        ...(access && cfg ? [new ButtonBuilder().setCustomId('panel_act_ai_disable').setLabel('\u274C Disable').setStyle(ButtonStyle.Danger)] : []),
+      ),
+      new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId('panel_main').setLabel('\u2190 Back').setStyle(ButtonStyle.Secondary),
+      ),
+    ],
+  };
+}
+
+function panelPermissions(interaction) {
+  const modRoles = db.prepare('SELECT mr.role_id, mr.permissions, r.name FROM mod_roles mr LEFT JOIN roles r ON r.id = mr.role_id WHERE mr.guild_id = ?').all(interaction.guildId);
+  const adminCmd = db.prepare('SELECT command_name, allowed_roles FROM command_permissions WHERE guild_id = ?').all(interaction.guildId);
+  const access = hasPanelAccess(interaction.member);
+
+  const roleLines = modRoles.length
+    ? modRoles.map(r => `  \u2022 <@&${r.role_id}>`).join('\n')
+    : '  None configured. Anyone with MANAGE_GUILD can use this panel.';
+
+  const cmdLines = adminCmd.length
+    ? adminCmd.map(c => `  \u2022 **/${c.command_name}** \u2192 ${JSON.parse(c.allowed_roles || '[]').map(rId => `<@&${rId}>`).join(', ') || 'Owner only'}`).join('\n')
+    : '  No command restrictions set (Owner only by default).';
+
+  const desc = [
+    `**Mod Roles (${modRoles.length})**`,
+    roleLines,
+    '',
+    `**Command Access (${adminCmd.length})**`,
+    cmdLines,
+    '',
+    '*Mod roles can use the panel UI. Per-command access restricts who can run that command.*',
+  ].join('\n');
+
+  return {
+    embeds: [new EmbedBuilder().setColor(0x2b2d31).setTitle('\uD83D\uDD11 Permissions').setDescription(desc)],
+    components: [
+      new ActionRowBuilder().addComponents(
+        ...(access ? [new ButtonBuilder().setCustomId('panel_act_addmodrole').setLabel('\u2795 Add Mod Role').setStyle(ButtonStyle.Primary)] : []),
+        ...(access && modRoles.length ? [new ButtonBuilder().setCustomId('panel_act_rmmodrole').setLabel('\u2796 Remove Mod Role').setStyle(ButtonStyle.Danger)] : []),
+      ),
+      new ActionRowBuilder().addComponents(
+        ...(access ? [new ButtonBuilder().setCustomId('panel_act_setcmdperm').setLabel('\uD83D\uDD11 Set Command Access').setStyle(ButtonStyle.Primary)] : []),
+      ),
+      new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId('panel_main').setLabel('\u2190 Back').setStyle(ButtonStyle.Secondary),
+      ),
+    ],
+  };
+}
+
+function panelGiveaway(interaction) {
+  const rows = db.prepare('SELECT * FROM giveaways WHERE guild_id = ?').all(interaction.guildId);
+  const access = hasPanelAccess(interaction.member);
+  const desc = rows.length
+    ? rows.map(r => {
+        const entries = JSON.parse(r.entries || '[]');
+        return `  \u2022 **${r.prize}** \u2014 ${entries.length} entries (ends <t:${Math.floor(r.ends_at / 1000)}:R>)`;
+      }).join('\n')
+    : 'No active giveaways.';
+
+  return {
+    embeds: [new EmbedBuilder().setColor(0x2b2d31).setTitle(`\uD83C\uDF89 Giveaways (${rows.length})`).setDescription(desc)],
+    components: [
+      new ActionRowBuilder().addComponents(
+        ...(access ? [new ButtonBuilder().setCustomId('panel_act_giveaway').setLabel('\u2795 New Giveaway').setStyle(ButtonStyle.Primary)] : []),
       ),
       new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId('panel_main').setLabel('\u2190 Back').setStyle(ButtonStyle.Secondary),
@@ -1152,9 +1307,10 @@ function createModal(id, title, fields) {
 // ─────────────────────────────── PANEL BUTTON HANDLER ───────────────────────────────
 
 async function handlePanelButton(interaction) {
-  if (interaction.user.id !== OWNER_ID) return interaction.reply({ content: 'Owner only.', ephemeral: true });
   const id = interaction.customId;
+  const access = hasPanelAccess(interaction.member);
 
+  // Navigation — everyone can view, but action buttons are hidden from non-access users
   if (id === 'panel_log') return interaction.update(panelLog(interaction));
   if (id === 'panel_tag') return interaction.update(panelTag(interaction));
   if (id === 'panel_ticket') return interaction.update(panelTicket(interaction));
@@ -1162,12 +1318,18 @@ async function handlePanelButton(interaction) {
   if (id === 'panel_antispam') return interaction.update(panelAntiSpam(interaction));
   if (id === 'panel_bans') return interaction.update(panelBans(interaction));
   if (id === 'panel_main') return interaction.update(panelMain(interaction));
+  if (id === 'panel_refresh') return interaction.update(panelMain(interaction));
   if (id === 'panel_stats') return interaction.update(panelStats(interaction));
   if (id === 'panel_polls') return interaction.update(panelPolls(interaction));
   if (id === 'panel_warns') return interaction.update(panelWarns(interaction));
   if (id === 'panel_words') return interaction.update(panelWords(interaction));
   if (id === 'panel_autoreply') return interaction.update(panelAutoReply(interaction));
+  if (id === 'panel_permissions') return interaction.update(panelPermissions(interaction));
+  if (id === 'panel_giveaway') return interaction.update(panelGiveaway(interaction));
   if (id === 'panel_close') return interaction.message.delete().catch(() => {});
+
+  // ── All actions below require panel access ──
+  if (!access) return interaction.reply({ content: 'You do not have permission to modify settings.', ephemeral: true });
 
   // Action modals
   if (id === 'panel_act_warncount') return interaction.showModal(createModal('modal_warncount', 'Set Max Warns', [{ id: 'count', label: 'Warn count (1-100)', placeholder: '5', min: 1, max: 3 }]));
@@ -1203,15 +1365,33 @@ async function handlePanelButton(interaction) {
   if (id === 'panel_act_long_threshold') return interaction.showModal(createModal('modal_long_threshold', 'Long Msg: Max Chars', [{ id: 'val', label: 'Character threshold', placeholder: '2000', min: 1, max: 5 }]));
   if (id === 'panel_act_long_warns') return interaction.showModal(createModal('modal_long_warns', 'Long Msg: Warns', [{ id: 'val', label: 'Warns per long message', placeholder: '2', min: 1, max: 2 }]));
   if (id === 'panel_act_long_mute') return interaction.showModal(createModal('modal_long_mute', 'Long Msg: Mute (s)', [{ id: 'val', label: 'Mute duration in seconds', placeholder: '3600', min: 1, max: 6 }]));
+  if (id === 'panel_act_addmodrole') return interaction.showModal(createModal('modal_addmodrole', 'Add Mod Role', [{ id: 'role', label: 'Role ID', placeholder: 'Paste role ID', min: 17, max: 20 }]));
+  if (id === 'panel_act_rmmodrole') {
+    const rows = db.prepare('SELECT role_id FROM mod_roles WHERE guild_id = ?').all(interaction.guildId);
+    if (!rows.length) return interaction.reply({ content: 'No mod roles configured.', ephemeral: true });
+    const select = new StringSelectMenuBuilder().setCustomId('select_rmmodrole').setPlaceholder('Pick a role to remove').addOptions(
+      rows.map(r => ({ label: `Role ${r.role_id}`, value: r.role_id })),
+    );
+    return interaction.reply({ content: 'Select a mod role to remove:', components: [new ActionRowBuilder().addComponents(select)], ephemeral: true });
+  }
+  if (id === 'panel_act_setcmdperm') return interaction.showModal(createModal('modal_setcmdperm', 'Set Command Access', [
+    { id: 'command', label: 'Command name (without /)', placeholder: 'warn', min: 2, max: 50 },
+    { id: 'roles', label: 'Role IDs (comma-separated)', placeholder: '123,456,789', min: 1, max: 200 },
+  ]));
+  if (id === 'panel_act_giveaway') return interaction.showModal(createModal('modal_giveaway', 'New Giveaway', [
+    { id: 'prize', label: 'Prize', placeholder: 'Discord Nitro', min: 2, max: 100 },
+    { id: 'duration', label: 'Duration (e.g. 1h, 2d)', placeholder: '24h', min: 1, max: 10 },
+    { id: 'winners', label: 'Winner count', placeholder: '1', min: 1, max: 2 },
+  ]));
 
   // Quick actions
   if (id.startsWith('panel_act_warnaction_')) {
-    const action = id.replace('panel_act_warnaction_', '');
-    if (!['kick', 'ban', 'mute'].includes(action)) return;
+    const act = id.replace('panel_act_warnaction_', '');
+    if (!['kick', 'ban', 'mute'].includes(act)) return;
     db.prepare('INSERT OR REPLACE INTO warn_settings (guild_id, max_warns, action, mute_duration) VALUES (?,COALESCE((SELECT max_warns FROM warn_settings WHERE guild_id = ?),5),?,COALESCE((SELECT mute_duration FROM warn_settings WHERE guild_id = ?),\'1h\'))')
-      .run(interaction.guildId, interaction.guildId, action, interaction.guildId);
+      .run(interaction.guildId, interaction.guildId, act, interaction.guildId);
     await interaction.update(panelWarns(interaction));
-    await sendModLog(interaction.guild, { Action: 'Warn Action Changed', Moderator: interaction.user.tag, NewAction: action });
+    await sendModLog(interaction.guild, { Action: 'Warn Action Changed', Moderator: interaction.user.tag, NewAction: act });
   }
 
   if (id === 'panel_act_tag_disable') {
@@ -1240,10 +1420,16 @@ async function handlePanelButton(interaction) {
     setConfig(interaction.guildId, 'long_msg_action', newVal);
     await interaction.update(panelAntiSpam(interaction));
   }
+
+  if (id === 'panel_act_log_reset') {
+    db.prepare('DELETE FROM log_settings WHERE guild_id = ?').run(interaction.guildId);
+    await interaction.update(panelLog(interaction));
+  }
 }
 
 async function handlePanelModal(interaction) {
-  if (interaction.user.id !== OWNER_ID) return interaction.reply({ content: 'Owner only.', ephemeral: true });
+  const access = hasPanelAccess(interaction.member);
+  if (!access) return interaction.reply({ content: 'You do not have permission to modify settings.', ephemeral: true });
   const id = interaction.customId;
 
   if (id === 'modal_warncount') {
@@ -1442,14 +1628,84 @@ async function handlePanelModal(interaction) {
     await interaction.update(panelAntiSpam(interaction));
     return;
   }
+
+  if (id === 'modal_addmodrole') {
+    const roleId = interaction.fields.getTextInputValue('role');
+    const role = interaction.guild.roles.cache.get(roleId);
+    if (!role) return interaction.reply({ content: 'Invalid role ID.', ephemeral: true });
+    db.prepare('INSERT OR REPLACE INTO mod_roles VALUES (?,?,?)').run(interaction.guildId, roleId, '{}');
+    await interaction.update(panelPermissions(interaction));
+    return;
+  }
+
+  if (id === 'modal_setcmdperm') {
+    const command = interaction.fields.getTextInputValue('command').toLowerCase().replace('/', '');
+    const rolesStr = interaction.fields.getTextInputValue('roles');
+    const roleIds = rolesStr.split(',').map(s => s.trim()).filter(s => s.length > 0 && interaction.guild.roles.cache.has(s));
+    if (!roleIds.length) return interaction.reply({ content: 'No valid role IDs provided.', ephemeral: true });
+    setCommandAccess(interaction.guildId, command, roleIds);
+    await interaction.update(panelPermissions(interaction));
+    return;
+  }
+
+  if (id === 'modal_giveaway') {
+    const prize = interaction.fields.getTextInputValue('prize');
+    const duration = interaction.fields.getTextInputValue('duration');
+    const winnersStr = interaction.fields.getTextInputValue('winners');
+    const winners = parseInt(winnersStr);
+    const sec = getTimeSeconds(duration);
+    if (!prize || !sec || sec < 60 || isNaN(winners) || winners < 1) {
+      return interaction.reply({ content: 'Invalid inputs. Prize required, duration min 1m, winners min 1.', ephemeral: true });
+    }
+    const endsAt = Date.now() + sec * 1000;
+    const msg = await interaction.channel.send({ content: `\uD83C\uDF89 **Giveaway: ${prize}**\nReact \uD83C\uDF89 to enter!\nEnds: <t:${Math.floor(endsAt / 1000)}:R>` });
+    await msg.react('\uD83C\uDF89');
+    db.prepare('INSERT INTO giveaways VALUES (?,?,?,?,?,?,?,?)').run(msg.id, interaction.guildId, interaction.channel.id, prize, winners, endsAt, interaction.user.id, '[]');
+    await interaction.update(panelGiveaway(interaction));
+    return;
+  }
+
+  if (id.startsWith('log_channel_modal_')) {
+    const logType = id.replace('log_channel_modal_', '');
+    const channelId = interaction.fields.getTextInputValue('channel').replace(/[<#>]/g, '');
+    const channel = interaction.guild.channels.cache.get(channelId);
+    if (!channel || (channel.type !== ChannelType.GuildText && channel.type !== ChannelType.GuildAnnouncement)) {
+      return interaction.reply({ content: 'Invalid channel ID or not a text channel.', ephemeral: true });
+    }
+    db.prepare('INSERT OR REPLACE INTO log_settings VALUES (?,?,COALESCE((SELECT enabled FROM log_settings WHERE guild_id = ? AND log_type = ?),1),?)').run(interaction.guildId, logType, interaction.guildId, logType, channelId);
+    await interaction.reply({ content: `${LOG_NAMES[logType] || logType} will log to <#${channelId}>.`, ephemeral: true });
+    return;
+  }
 }
 
-// ── Config helper (safe column update, won't wipe other cols) ──
-function setConfig(guildId, column, value) {
-  db.prepare(`INSERT INTO config (guild_id, ${column}) VALUES (?, ?) ON CONFLICT(guild_id) DO UPDATE SET ${column} = excluded.${column}`).run(guildId, value);
+// ── Permission helpers ──
+function hasPanelAccess(member) {
+  if (member.id === OWNER_ID) return 'owner';
+  const rows = db.prepare('SELECT role_id FROM mod_roles WHERE guild_id = ?').all(member.guild.id);
+  if (!rows.length) return false;
+  const has = rows.some(r => member.roles.cache.has(r.role_id));
+  return has ? 'mod' : false;
 }
-function ensureConfig(guildId) {
-  db.prepare('INSERT INTO config (guild_id) VALUES (?) ON CONFLICT(guild_id) DO NOTHING').run(guildId);
+
+function getModRoles(guildId) {
+  return db.prepare('SELECT mr.role_id, mr.permissions, r.name FROM mod_roles mr LEFT JOIN roles r ON r.id = mr.role_id WHERE mr.guild_id = ?').all(guildId);
+}
+
+function canAccessCommand(member, command) {
+  if (member.id === OWNER_ID) return true;
+  const row = db.prepare('SELECT allowed_roles FROM command_permissions WHERE guild_id = ? AND command_name = ?').get(member.guild.id, command);
+  if (!row) return false;
+  const roles = JSON.parse(row.allowed_roles || '[]');
+  return roles.some(rId => member.roles.cache.has(rId));
+}
+
+function getCommandAccess(guildId, command) {
+  const row = db.prepare('SELECT allowed_roles FROM command_permissions WHERE guild_id = ? AND command_name = ?').get(guildId, command);
+  return row ? JSON.parse(row.allowed_roles || '[]') : [];
+}
+
+function setCommandAccess(guildId, command, roles) {
+  db.prepare('INSERT OR REPLACE INTO command_permissions VALUES (?,?,?)').run(guildId, command, JSON.stringify(roles));
 }
 
 const slashCommands = [
@@ -1619,28 +1875,196 @@ client.once('ready', async () => {
   console.log(`[CACHE] ${cache.size} polls, temp ban checker active`);
 });
 
+// ─────────────────────────────── COMPREHENSIVE LOGGING ───────────────────────────────
+
 client.on('messageDelete', (msg) => {
-  if (msg.author?.bot || !msg.guild || !msg.content) return;
+  if (msg.author?.bot || !msg.guild) return;
+  // Always store in snipe cache
   snipe.add(msg.guild.id, msg.channel.id, {
-    authorId: msg.author.id,
-    author: msg.author.tag,
-    content: msg.content,
+    authorId: msg.author.id, author: msg.author.tag, content: msg.content || '(no text)',
     timestamp: Date.now(),
   });
+  const e = new EmbedBuilder().setColor(0xe74c3c).setTitle('Message Deleted').setDescription(`**Author:** <@${msg.author.id}> (\`${msg.author.tag}\`)\n**Channel:** <#${msg.channel.id}>\n**Content:** ${msg.content || '*No text content*'}`).setFooter({ text: `Author: ${msg.author.id}` }).setTimestamp(msg.createdTimestamp);
+  sendLog(msg.guild, LOG_TYPES.MESSAGE_DELETE, e);
+});
+
+client.on('messageUpdate', (oldMsg, newMsg) => {
+  if (!oldMsg.content || !newMsg.content || oldMsg.content === newMsg.content || oldMsg.author?.bot || !oldMsg.guild) return;
+  const e = new EmbedBuilder().setColor(0xf1c40f).setTitle('Message Edited').setDescription(`**Author:** <@${oldMsg.author.id}> (\`${oldMsg.author.tag}\`)\n**Channel:** <#${oldMsg.channel.id}>\n**Before:** ${oldMsg.content}\n**After:** ${newMsg.content}`).setFooter({ text: `Author: ${oldMsg.author.id}` }).setTimestamp();
+  sendLog(oldMsg.guild, LOG_TYPES.MESSAGE_EDIT, e);
+});
+
+client.on('messageDeleteBulk', (messages) => {
+  const first = messages.first();
+  if (!first?.guild) return;
+  const count = messages.size;
+  const users = [...new Set(messages.map(m => m.author?.tag).filter(Boolean))].slice(0, 20).join(', ');
+  const e = new EmbedBuilder().setColor(0xe74c3c).setTitle('Bulk Message Delete').setDescription(`**Channel:** <#${first.channel.id}>\n**Count:** ${count} messages\n**Users:** ${users || 'Unknown'}`).setTimestamp();
+  sendLog(first.guild, LOG_TYPES.BULK_DELETE, e);
 });
 
 client.on('guildMemberAdd', async (member) => {
-  const chanId = db.prepare('SELECT tag_channel_id FROM config WHERE guild_id = ?').get(member.guild.id)?.tag_channel_id;
-  if (!chanId) return;
-  try {
-    const chan = await member.guild.channels.fetch(chanId);
-    const m = await chan.send({ content: `${member}` });
-    setTimeout(() => m.delete().catch(() => {}), 100);
-  } catch {}
+  // Tag/auto-welcome
+  const tagChanId = db.prepare('SELECT tag_channel_id FROM config WHERE guild_id = ?').get(member.guild.id)?.tag_channel_id;
+  if (tagChanId) {
+    try {
+      const chan = await member.guild.channels.fetch(tagChanId);
+      const m = await chan.send({ content: `${member}` });
+      setTimeout(() => m.delete().catch(() => {}), 100);
+    } catch {}
+  }
+  // Log
+  const created = Math.floor(member.user.createdTimestamp / 1000);
+  const age = member.user.createdAt > Date.now() - 604800000 ? '⚠️ Account < 7 days old' : '✅ Account age OK';
+  const e = new EmbedBuilder().setColor(0x2ecc71).setTitle('Member Joined').setDescription(`**User:** ${member.user.tag} (<@${member.user.id}>)\n**Account Created:** <t:${created}:R>\n**Age Check:** ${age}`).setFooter({ text: `ID: ${member.user.id}` }).setTimestamp();
+  sendLog(member.guild, LOG_TYPES.MEMBER_JOIN, e);
 });
 
 client.on('guildMemberRemove', async (member) => {
   db.prepare('DELETE FROM afk WHERE guild_id = ? AND user_id = ?').run(member.guild.id, member.user.id);
+  const roles = member.roles?.cache?.filter(r => r.name !== '@everyone').map(r => r.name).join(', ') || 'None';
+  const e = new EmbedBuilder().setColor(0xe74c3c).setTitle('Member Left').setDescription(`**User:** ${member.user.tag} (<@${member.user.id}>)\n**Roles:** ${roles}`).setFooter({ text: `ID: ${member.user.id}` }).setTimestamp();
+  sendLog(member.guild, LOG_TYPES.MEMBER_LEAVE, e);
+});
+
+client.on('guildBanAdd', async (ban) => {
+  const e = new EmbedBuilder().setColor(0xe74c3c).setTitle('Member Banned').setDescription(`**User:** ${ban.user.tag} (<@${ban.user.id}>)\n**Reason:** ${ban.reason || 'No reason'}`).setFooter({ text: `ID: ${ban.user.id}` }).setTimestamp();
+  sendLog(ban.guild, LOG_TYPES.MEMBER_BAN, e);
+});
+
+client.on('guildBanRemove', async (ban) => {
+  const e = new EmbedBuilder().setColor(0x2ecc71).setTitle('Member Unbanned').setDescription(`**User:** ${ban.user.tag} (<@${ban.user.id}>)`).setFooter({ text: `ID: ${ban.user.id}` }).setTimestamp();
+  sendLog(ban.guild, LOG_TYPES.MEMBER_UNBAN, e);
+});
+
+client.on('guildMemberUpdate', async (oldMember, newMember) => {
+  if (oldMember.user.bot) return;
+
+  // Role changes
+  const addedRoles = newMember.roles.cache.filter(r => !oldMember.roles.cache.has(r.id) && r.name !== '@everyone');
+  const removedRoles = oldMember.roles.cache.filter(r => !newMember.roles.cache.has(r.id) && r.name !== '@everyone');
+  if (addedRoles.size || removedRoles.size) {
+    const lines = [];
+    if (addedRoles.size) lines.push(`**Added:** ${addedRoles.map(r => `<@&${r.id}>`).join(', ')}`);
+    if (removedRoles.size) lines.push(`**Removed:** ${removedRoles.map(r => `<@&${r.id}>`).join(', ')}`);
+    const e = new EmbedBuilder().setColor(0x3498db).setTitle('Role Updated').setDescription(`**User:** ${newMember.user.tag} (<@${newMember.user.id}>)\n${lines.join('\n')}`).setFooter({ text: `ID: ${newMember.user.id}` }).setTimestamp();
+    sendLog(newMember.guild, LOG_TYPES.MEMBER_ROLE, e);
+  }
+
+  // Nickname changes
+  if (oldMember.nickname !== newMember.nickname) {
+    const e = new EmbedBuilder().setColor(0x9b59b6).setTitle('Nickname Changed').setDescription(`**User:** ${newMember.user.tag} (<@${newMember.user.id}>)\n**Before:** ${oldMember.nickname || '*None*'}\n**After:** ${newMember.nickname || '*None*'}`).setFooter({ text: `ID: ${newMember.user.id}` }).setTimestamp();
+    sendLog(newMember.guild, LOG_TYPES.MEMBER_NICKNAME, e);
+  }
+
+  // Timeout/mute changes
+  const oldTimedOut = oldMember.communicationDisabledUntil?.getTime() || 0;
+  const newTimedOut = newMember.communicationDisabledUntil?.getTime() || 0;
+  if (oldTimedOut !== newTimedOut) {
+    let desc;
+    if (newTimedOut > Date.now()) {
+      desc = `**User:** ${newMember.user.tag} (<@${newMember.user.id}>)\n**Duration:** <t:${Math.floor(newTimedOut / 1000)}:R>`;
+    } else if (oldTimedOut > Date.now() && newTimedOut === 0) {
+      desc = `**User:** ${newMember.user.tag} (<@${newMember.user.id}>)\n**Action:** Timeout removed`;
+    } else {
+      return;
+    }
+    const e = new EmbedBuilder().setColor(0xe67e22).setTitle('Timeout/Mute').setDescription(desc).setFooter({ text: `ID: ${newMember.user.id}` }).setTimestamp();
+    sendLog(newMember.guild, LOG_TYPES.MEMBER_TIMEOUT, e);
+  }
+});
+
+client.on('voiceStateUpdate', (oldState, newState) => {
+  const member = newState.member || oldState.member;
+  if (!member || member.user.bot) return;
+  const guild = member.guild;
+  let desc;
+  let color;
+  let title;
+
+  if (!oldState.channelId && newState.channelId) {
+    title = 'Voice: Joined';
+    color = 0x2ecc71;
+    desc = `**User:** ${member.user.tag} (<@${member.user.id}>)\n**Channel:** <#${newState.channelId}>`;
+  } else if (oldState.channelId && !newState.channelId) {
+    title = 'Voice: Left';
+    color = 0xe74c3c;
+    desc = `**User:** ${member.user.tag} (<@${member.user.id}>)\n**Channel:** <#${oldState.channelId}>`;
+  } else if (oldState.channelId !== newState.channelId) {
+    title = 'Voice: Moved';
+    color = 0x3498db;
+    desc = `**User:** ${member.user.tag} (<@${member.user.id}>)\n**From:** <#${oldState.channelId}>\n**To:** <#${newState.channelId}>`;
+  } else if (oldState.mute !== newState.mute || oldState.deaf !== newState.deaf) {
+    const changes = [];
+    if (oldState.mute !== newState.mute) changes.push(newState.mute ? 'Muted' : 'Unmuted');
+    if (oldState.deaf !== newState.deaf) changes.push(newState.deaf ? 'Deafened' : 'Undeafened');
+    title = 'Voice: Updated';
+    color = 0xf1c40f;
+    desc = `**User:** ${member.user.tag} (<@${member.user.id}>)\n**Channel:** <#${newState.channelId || oldState.channelId}>\n**Changes:** ${changes.join(', ')}`;
+  } else return;
+
+  const e = new EmbedBuilder().setColor(color).setTitle(title).setDescription(desc).setFooter({ text: `ID: ${member.user.id}` }).setTimestamp();
+  sendLog(guild, LOG_TYPES.VOICE, e);
+});
+
+client.on('channelCreate', async (channel) => {
+  if (!channel.guild) return;
+  const typeName = { 0: 'Text', 2: 'Voice', 4: 'Category', 5: 'Announcement', 13: 'Stage', 15: 'Forum' }[channel.type] || 'Other';
+  const e = new EmbedBuilder().setColor(0x2ecc71).setTitle('Channel Created').setDescription(`**Name:** ${channel.name}\n**Type:** ${typeName}\n**ID:** \`${channel.id}\``).setTimestamp();
+  sendLog(channel.guild, LOG_TYPES.CHANNEL_CREATE, e);
+});
+
+client.on('channelDelete', async (channel) => {
+  if (!channel.guild) return;
+  const typeName = { 0: 'Text', 2: 'Voice', 4: 'Category', 5: 'Announcement', 13: 'Stage', 15: 'Forum' }[channel.type] || 'Other';
+  const e = new EmbedBuilder().setColor(0xe74c3c).setTitle('Channel Deleted').setDescription(`**Name:** ${channel.name}\n**Type:** ${typeName}\n**ID:** \`${channel.id}\``).setTimestamp();
+  sendLog(channel.guild, LOG_TYPES.CHANNEL_DELETE, e);
+});
+
+client.on('channelUpdate', (oldChannel, newChannel) => {
+  if (!oldChannel.guild || !newChannel.guild) return;
+  const changes = [];
+  if (oldChannel.name !== newChannel.name) changes.push(`Name: \`${oldChannel.name}\` → \`${newChannel.name}\``);
+  if (oldChannel.topic !== newChannel.topic) changes.push(`Topic changed`);
+  if (oldChannel.nsfw !== newChannel.nsfw) changes.push(`NSFW: ${newChannel.nsfw ? 'Yes' : 'No'}`);
+  if (oldChannel.rateLimitPerUser !== newChannel.rateLimitPerUser) changes.push(`Slowmode: ${newChannel.rateLimitPerUser}s`);
+  if (oldChannel.userLimit !== newChannel.userLimit) changes.push(`User Limit: ${newChannel.userLimit}`);
+  if (oldChannel.bitrate !== newChannel.bitrate) changes.push(`Bitrate: ${newChannel.bitrate}`);
+  if (!changes.length) return;
+  const e = new EmbedBuilder().setColor(0x3498db).setTitle('Channel Updated').setDescription(`**Channel:** <#${newChannel.id}> (\`${newChannel.name}\`)\n${changes.join('\n')}`).setTimestamp();
+  sendLog(newChannel.guild, LOG_TYPES.CHANNEL_UPDATE, e);
+});
+
+client.on('inviteCreate', async (invite) => {
+  if (!invite.guild) return;
+  const maxAge = invite.maxAge === 0 ? 'Never' : `${invite.maxAge}s`;
+  const e = new EmbedBuilder().setColor(0x2ecc71).setTitle('Invite Created').setDescription(`**Inviter:** ${invite.inviter?.tag || 'Unknown'} (<@${invite.inviter?.id || '?'}>)\n**Code:** \`${invite.code}\`\n**Max Age:** ${maxAge}\n**Max Uses:** ${invite.maxUses || 'Unlimited'}\n**Channel:** <#${invite.channel?.id || '?'}>`).setTimestamp();
+  sendLog(invite.guild, LOG_TYPES.INVITE_CREATE, e);
+});
+
+client.on('inviteDelete', async (invite) => {
+  if (!invite.guild) return;
+  const e = new EmbedBuilder().setColor(0xe74c3c).setTitle('Invite Deleted').setDescription(`**Code:** \`${invite.code}\`\n**Channel:** <#${invite.channel?.id || '?'}>`).setTimestamp();
+  sendLog(invite.guild, LOG_TYPES.INVITE_DELETE, e);
+});
+
+client.on('emojiCreate', (emoji) => {
+  if (!emoji.guild) return;
+  const e = new EmbedBuilder().setColor(0x2ecc71).setTitle('Emoji Created').setDescription(`**Name:** ${emoji.name}\n**ID:** \`${emoji.id}\`\n**Animated:** ${emoji.animated ? 'Yes' : 'No'}`).setTimestamp();
+  sendLog(emoji.guild, LOG_TYPES.EMOJI, e);
+});
+
+client.on('emojiDelete', (emoji) => {
+  if (!emoji.guild) return;
+  const e = new EmbedBuilder().setColor(0xe74c3c).setTitle('Emoji Deleted').setDescription(`**Name:** ${emoji.name}\n**ID:** \`${emoji.id}\``).setTimestamp();
+  sendLog(emoji.guild, LOG_TYPES.EMOJI, e);
+});
+
+client.on('emojiUpdate', (oldEmoji, newEmoji) => {
+  if (!oldEmoji.guild) return;
+  if (oldEmoji.name === newEmoji.name) return;
+  const e = new EmbedBuilder().setColor(0x3498db).setTitle('Emoji Renamed').setDescription(`**Before:** ${oldEmoji.name}\n**After:** ${newEmoji.name}\n**ID:** \`${newEmoji.id}\``).setTimestamp();
+  sendLog(newEmoji.guild, LOG_TYPES.EMOJI, e);
 });
 
 client.on('interactionCreate', async (interaction) => {
@@ -1650,6 +2074,25 @@ client.on('interactionCreate', async (interaction) => {
   }
   if (interaction.isButton()) {
     if (interaction.customId.startsWith('panel_')) return handlePanelButton(interaction);
+    if (interaction.customId.startsWith('log_toggle_') || interaction.customId.startsWith('log_channel_') || interaction.customId.startsWith('log_reset_')) {
+      const access = hasPanelAccess(interaction.member);
+      if (!access) return interaction.reply({ content: 'No permission.', ephemeral: true });
+      const parts = interaction.customId.split('_');
+      const action = parts[0] + '_' + parts[1]; // log_toggle, log_channel, log_reset
+      const logType = parts.slice(2).join('_');
+      if (action === 'log_toggle') {
+        const s = db.prepare('SELECT * FROM log_settings WHERE guild_id = ? AND log_type = ?').get(interaction.guildId, logType);
+        const currentEnabled = s ? s.enabled === 1 : true;
+        db.prepare('INSERT OR REPLACE INTO log_settings VALUES (?,?,?,COALESCE((SELECT channel_id FROM log_settings WHERE guild_id = ? AND log_type = ?),NULL))').run(interaction.guildId, logType, currentEnabled ? 0 : 1, interaction.guildId, logType);
+        await interaction.reply({ content: `${LOG_NAMES[logType] || logType} ${currentEnabled ? '🔴 disabled' : '🟢 enabled'}.`, ephemeral: true });
+      } else if (action === 'log_channel') {
+        return interaction.showModal(createModal(`log_channel_modal_${logType}`, `Set Channel for ${LOG_NAMES[logType] || logType}`, [{ id: 'channel', label: 'Channel ID', placeholder: 'Click channel > Copy ID', min: 17, max: 20 }]));
+      } else if (action === 'log_reset') {
+        db.prepare('DELETE FROM log_settings WHERE guild_id = ? AND log_type = ?').run(interaction.guildId, logType);
+        await interaction.reply({ content: `${LOG_NAMES[logType] || logType} reset to defaults.`, ephemeral: true });
+      }
+      return;
+    }
     if (interaction.customId === 'ticket_open') {
       // Check for existing open ticket via DB
       const existingTicket = db.prepare("SELECT channel_id FROM tickets WHERE guild_id = ? AND user_id = ? AND status = 'open'").get(interaction.guildId, interaction.user.id);
@@ -1735,6 +2178,38 @@ client.on('interactionCreate', async (interaction) => {
   }
   if (interaction.isModalSubmit()) {
     await handlePanelModal(interaction);
+    return;
+  }
+  if (interaction.isStringSelectMenu() && interaction.customId === 'select_log_type') {
+    const logType = interaction.values[0];
+    const access = hasPanelAccess(interaction.member);
+    if (!access) return interaction.reply({ content: 'No permission.', ephemeral: true });
+    const s = db.prepare('SELECT * FROM log_settings WHERE guild_id = ? AND log_type = ?').get(interaction.guildId, logType);
+    const enabled = s ? s.enabled === 1 : true;
+    const name = LOG_NAMES[logType] || logType;
+    const reply = {
+      content: `**${name}**\nStatus: ${enabled ? '🟢 Enabled' : '🔴 Disabled'}${s?.channel_id ? `\nChannel: <#${s.channel_id}>` : ''}`,
+      components: [
+        new ActionRowBuilder().addComponents(
+          new ButtonBuilder().setCustomId(`log_toggle_${logType}`).setLabel(enabled ? '🔴 Disable' : '🟢 Enable').setStyle(enabled ? ButtonStyle.Danger : ButtonStyle.Success),
+          new ButtonBuilder().setCustomId(`log_channel_${logType}`).setLabel('\uD83D\uDCCD Set Separate Channel').setStyle(ButtonStyle.Secondary),
+          new ButtonBuilder().setCustomId(`log_reset_${logType}`).setLabel('\uD83D\uDD04 Reset').setStyle(ButtonStyle.Secondary),
+        ),
+        new ActionRowBuilder().addComponents(
+          new ButtonBuilder().setCustomId('panel_log').setLabel('\u2190 Back to Log Overview').setStyle(ButtonStyle.Secondary),
+        ),
+      ],
+      ephemeral: true,
+    };
+    await interaction.reply(reply);
+    return;
+  }
+  if (interaction.isStringSelectMenu() && interaction.customId === 'select_rmmodrole') {
+    const roleId = interaction.values[0];
+    const access = hasPanelAccess(interaction.member);
+    if (!access) return interaction.reply({ content: 'No permission.', ephemeral: true });
+    db.prepare('DELETE FROM mod_roles WHERE guild_id = ? AND role_id = ?').run(interaction.guildId, roleId);
+    await interaction.reply({ content: `Mod role removed.`, ephemeral: true });
     return;
   }
   if (interaction.isStringSelectMenu() && interaction.customId === 'vote') {
