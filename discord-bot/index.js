@@ -2315,12 +2315,13 @@ async function handleSlash(interaction) {
   if (cmd === 'help') {
     const embed = new EmbedBuilder().setColor(0x000000).setTitle('NEXUS').setDescription('Your all-in-one Discord bot').setFooter({ text: 'Prefix: ,' });
     embed.addFields(
-      { name: 'Everyone', value: '`/help`, `/panel`, `/userinfo`, `/serverinfo`, `/avatar`, `/banner`, `/afk`, `/remind`, `/ticket`, `/entervc`, `/leavevc`', inline: false },
-      { name: 'Polls', value: '`/poll`, `/endpoll`, `/activepolls`, `/history` (Owner + Staff only) `,endpoll`', inline: false },
-      { name: 'Giveaways', value: '`/giveaway`, `/endgiveaway`, `/reroll` (Owner only) — Panel: Log > Giveaways tab', inline: false },
-      { name: 'Moderation', value: '`,warn`, `,ban`, `,kick`, `,mute`, `,timeout`, `,clear`, `,nuke`, `,role`, `,lock`, `,unlock`, `,slowmode`, `,voicekick`, `,snipe`', inline: false },
-      { name: 'Auto-Mod', value: '`,warnword`, `,muteword`, `,addword` — Panel: Protect > Filters', inline: false },
-      { name: 'Settings', value: '`/panel` → All config (log types, anti-spam, tickets, AI, perms, keyword triggers, auto-replies)', inline: false },
+      { name: 'Everyone', value: '`/help` `,help` \u2022 `/panel` `,panel` \u2022 `/userinfo` `,userinfo` \u2022 `/serverinfo` \u2022 `/avatar` \u2022 `/banner` \u2022 `/afk` `,afk` \u2022 `/remind` `,remind` \u2022 `/ticket` `,ticket` \u2022 `/entervc` `,entervc` \u2022 `/leavevc` `,leavevc` \u2022 `/subscribe` `,subscribe`', inline: false },
+      { name: 'Polls', value: '`/poll` `,poll` \u2022 `/endpoll` `,endpoll` \u2022 `/activepolls` `,activepolls` \u2022 `/history` `,history` (Owner + Staff only)', inline: false },
+      { name: 'Giveaways', value: '`/giveaway` `,giveaway` \u2022 `/endgiveaway` `,endgiveaway` \u2022 `/reroll` `,reroll` (Owner only) \u2014 Panel: Log > Giveaways tab', inline: false },
+      { name: 'Moderation', value: '`,warn` \u2022 `,ban` \u2022 `,kick` \u2022 `,mute` \u2022 `,timeout` \u2022 `,clear` \u2022 `,nuke` \u2022 `,role` \u2022 `,lock` \u2022 `,unlock` \u2022 `,slowmode` \u2022 `,voicekick` \u2022 `,snipe` \u2022 `,deafen` \u2022 `,nick` `,nick` \u2022 `/setlog` `,setlog` \u2022 `/tagchannel` `,tagchannel` \u2022 `/warncount` `,warncount` \u2022 `/warnsetting` `,warnsetting`', inline: false },
+      { name: 'Auto-Mod', value: '`,warnword` \u2022 `,muteword` \u2022 `,addword` `,addword` \u2022 `/banword` \u2022 `/muteword` \u2014 Panel: Protect > Filters', inline: false },
+      { name: 'Settings', value: '`/panel` \u2192 All config (log types, anti-spam, tickets, AI, perms, keyword triggers, auto-replies) \u2022 `/settings` `,settings`', inline: false },
+      { name: 'Owner', value: '`,roleall` \u2022 `,removeall` \u2022 `,say` \u2022 `,emoji` \u2022 `/rules` `,rules` \u2022 `/announce` \u2022 `/sendmessage` \u2022 `/roleall` \u2022 `/removeall`', inline: false },
     );
     const bannerPath = require('path').join(__dirname, 'assets', 'banner.png');
     const bannerFile = require('fs').existsSync(bannerPath) ? new AttachmentBuilder(bannerPath) : null;
@@ -3107,9 +3108,385 @@ client.on('messageCreate', async (msg) => {
         await msg.channel.sendTyping();
         const reply = await askAI(aiCfg.provider, aiCfg.api_key, aiCfg.model || undefined, prompt);
         await msg.reply({ embeds: [smallEmbed(reply.slice(0, 1900))], allowedMentions: { repliedUser: false } });
-        return;
-      }
+    return;
+  }
+
+  // ── Prefix shortcuts for slash-only commands ──
+
+  if (cmd === 'help') {
+    const embed = new EmbedBuilder().setColor(0x000000).setTitle('NEXUS').setDescription('Your all-in-one Discord bot').setFooter({ text: 'Prefix: ,' });
+    embed.addFields(
+      { name: 'Everyone', value: '`/help`, `/panel`, `/userinfo`, `/serverinfo`, `/avatar`, `/banner`, `/afk`, `/remind`, `/ticket`, `/entervc`, `/leavevc`', inline: false },
+      { name: 'Polls', value: '`/poll`, `/endpoll`, `/activepolls`, `/history` (Owner + Staff only) `,endpoll`', inline: false },
+      { name: 'Giveaways', value: '`/giveaway`, `/endgiveaway`, `/reroll` (Owner only) \u2014 Panel: Log > Giveaways tab', inline: false },
+      { name: 'Moderation', value: '`,warn`, `,ban`, `,kick`, `,mute`, `,timeout`, `,clear`, `,nuke`, `,role`, `,lock`, `,unlock`, `,slowmode`, `,voicekick`, `,snipe`', inline: false },
+      { name: 'Auto-Mod', value: '`,warnword`, `,muteword`, `,addword` \u2014 Panel: Protect > Filters', inline: false },
+      { name: 'Settings', value: '`/panel` \u2192 All config (log types, anti-spam, tickets, AI, perms, keyword triggers, auto-replies)', inline: false },
+    );
+    const bannerPath = require('path').join(__dirname, 'assets', 'banner.png');
+    const bannerFile = require('fs').existsSync(bannerPath) ? new AttachmentBuilder(bannerPath) : null;
+    if (bannerFile) embed.setImage('attachment://banner.png');
+    await msg.reply({ embeds: [embed], files: bannerFile ? [bannerFile] : [] });
+    return;
+  }
+
+  if (cmd === 'panel') {
+    if (member.id !== OWNER_ID) return msg.reply({ embeds: [errorEmbed('This panel is for the bot owner only.')] });
+    const mock = { guildId: guild.id, guild, member };
+    const reply = panelMain(mock);
+    await msg.reply(reply);
+    return;
+  }
+
+  if (cmd === 'ticket') {
+    if (!modError(PermissionFlagsBits.ManageMessages)) return;
+    const btn = new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId('ticket_open').setLabel('\uD83C\uDFAB Open Ticket').setStyle(ButtonStyle.Primary),
+    );
+    await msg.reply({ embeds: [new EmbedBuilder().setColor(0x2b2d31).setTitle('Support Tickets').setDescription('Click the button below to open a support ticket.')], components: [btn] });
+    return;
+  }
+
+  if (cmd === 'afk') {
+    const reason = args.join(' ') || 'AFK';
+    db.prepare('INSERT OR REPLACE INTO afk VALUES (?,?,?,?)').run(guild.id, member.id, reason, Date.now());
+    await msg.reply({ embeds: [new EmbedBuilder().setColor(0xCC3333).setDescription(`\uD83D\uDCA4 ${member.user} is now **AFK**: ${reason}`)] });
+    return;
+  }
+
+  if (cmd === 'userinfo' || cmd === 'ui') {
+    const target = getTargetFromMsg(msg, args) || member.user;
+    const user = target.id ? await client.users.fetch(target.id).catch(() => null) : null;
+    if (!user) return msg.reply({ embeds: [errorEmbed('User not found.')] });
+    const tMember = await getMember(guild, user.id);
+    const warns = db.prepare('SELECT COUNT(*) as c FROM warns WHERE guild_id = ? AND user_id = ?').get(guild.id, user.id).c;
+    const lines = [
+      `**User:** ${user.tag} (${user.id})`,
+      `**Joined:** ${tMember ? `<t:${Math.floor(tMember.joinedTimestamp / 1000)}:R>` : 'Not in server'}`,
+      `**Registered:** <t:${Math.floor(user.createdTimestamp / 1000)}:R>`,
+      `**Warns:** ${warns}`,
+      `**Roles:** ${tMember ? tMember.roles.cache.filter(r => r.id !== guild.id).size : '-'}`,
+    ];
+    await msg.reply({ embeds: [new EmbedBuilder().setColor(0x2b2d31).setTitle('User Info').setDescription(lines.join('\n')).setThumbnail(user.displayAvatarURL())] });
+    return;
+  }
+
+  if (cmd === 'serverinfo' || cmd === 'si') {
+    const lines = [
+      `**Name:** ${guild.name}`,
+      `**ID:** ${guild.id}`,
+      `**Owner:** ${(await guild.fetchOwner()).user.tag}`,
+      `**Members:** ${guild.memberCount}`,
+      `**Channels:** ${guild.channels.cache.size}`,
+      `**Roles:** ${guild.roles.cache.size}`,
+      `**Boost Level:** ${guild.premiumTier}`,
+      `**Created:** <t:${Math.floor(guild.createdTimestamp / 1000)}:R>`,
+    ];
+    await msg.reply({ embeds: [new EmbedBuilder().setColor(0x2b2d31).setTitle('Server Info').setDescription(lines.join('\n')).setThumbnail(guild.iconURL())] });
+    return;
+  }
+
+  if (cmd === 'remind') {
+    const timeStr = args[0];
+    const text = args.slice(1).join(' ');
+    const sec = getTimeSeconds(timeStr);
+    if (!sec || sec < 10 || sec > 2592000) return msg.reply({ embeds: [errorEmbed('Duration must be 10s-30d.')] });
+    await msg.reply({ embeds: [smallEmbed(`I will remind you in **${timeStr}**.`)] });
+    setTimeout(async () => {
+      try { await member.user.send({ embeds: [smallEmbed(`\u23F0 **Reminder:** ${text}`)] }); } catch {}
+    }, sec * 1000);
+    return;
+  }
+
+  if (cmd === 'giveaway') {
+    if (member.id !== OWNER_ID) return msg.reply({ embeds: [errorEmbed('Owner only.')] });
+    const durationStr = args[0];
+    const prize = args.slice(1).join(' ');
+    const sec = getTimeSeconds(durationStr);
+    if (!sec || sec < 30 || sec > 2592000 || !prize) return msg.reply({ embeds: [errorEmbed('Usage: `,giveaway <duration> <prize>` e.g. `,giveaway 1h Discord Nitro`')] });
+    const endsAt = Date.now() + sec * 1000;
+    const embed = new EmbedBuilder().setColor(0x2b2d31)
+      .setTitle('\uD83C\uDF89 Giveaway')
+      .setDescription(`**${prize}**\n\nHosted by ${member.user}\nWinners: **1**\nEnds: <t:${Math.floor(endsAt / 1000)}:R>`)
+      .setFooter({ text: 'Click the button below to enter!' });
+    const btn = new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId('giveaway_join').setEmoji('\uD83C\uDF89').setLabel('Enter').setStyle(ButtonStyle.Success),
+    );
+    const m = await msg.channel.send({ embeds: [embed], components: [btn] });
+    const data = { msgId: m.id, channelId: msg.channel.id, guildId: guild.id, prize, winners: 1, endsAt, hostId: member.id, entries: [] };
+    giveaways.set(m.id, data);
+    db.prepare('INSERT OR REPLACE INTO giveaways VALUES (?,?,?,?,?,?,?,?)').run(m.id, guild.id, msg.channel.id, prize, 1, endsAt, member.id, JSON.stringify([]));
+    scheduleGiveawayEnd(m.id, data);
+    return;
+  }
+
+  if (cmd === 'endgiveaway') {
+    if (member.id !== OWNER_ID) return msg.reply({ embeds: [errorEmbed('Owner only.')] });
+    const msgId = args[0];
+    if (!msgId) return msg.reply({ embeds: [errorEmbed('Usage: `,endgiveaway <message_id>`')] });
+    const g = giveaways.get(msgId);
+    if (!g) return msg.reply({ embeds: [errorEmbed('Giveaway not found or already ended.')] });
+    endGiveaway(msgId);
+    await msg.reply({ embeds: [smallEmbed('Giveaway ended.')] });
+    return;
+  }
+
+  if (cmd === 'reroll') {
+    if (member.id !== OWNER_ID) return msg.reply({ embeds: [errorEmbed('Owner only.')] });
+    const msgId = args[0];
+    if (!msgId) return msg.reply({ embeds: [errorEmbed('Usage: `,reroll <message_id>`')] });
+    const row = db.prepare('SELECT * FROM giveaways WHERE message_id = ?').get(msgId);
+    if (!row) return msg.reply({ embeds: [errorEmbed('Giveaway not found.')] });
+    const entries = JSON.parse(row.entries);
+    const valid = entries.filter(id => { try { return guild.members.cache.has(id); } catch { return false; } });
+    if (valid.length === 0) return msg.reply({ embeds: [errorEmbed('No valid entrants to reroll.')] });
+    const newWinners = [];
+    const count = Math.min(row.winners, valid.length);
+    for (let i = 0; i < count; i++) {
+      const idx = Math.floor(Math.random() * valid.length);
+      newWinners.push(valid.splice(idx, 1)[0]);
     }
+    await msg.channel.send({ embeds: [smallEmbed(`\uD83C\uDF89 **Reroll!** New winner(s) for **${row.prize}**: ${newWinners.map(id => `<@${id}>`).join(', ')}`)] });
+    await msg.reply({ embeds: [smallEmbed('Reroll done.')] });
+    return;
+  }
+
+  if (cmd === 'poll') {
+    if (!modError(PermissionFlagsBits.ManageMessages)) return;
+    const optionsStr = args[0];
+    const desc = args.slice(1).join(' ');
+    const options = optionsStr ? optionsStr.split(',').map(s => s.trim()).filter(Boolean) : [];
+    if (options.length < 2) return msg.reply({ embeds: [errorEmbed('Usage: `,poll <option1,option2,...> [description]` e.g. `,poll Yes,No,Maybe Vote now!`')] });
+    if (options.length > 25) return msg.reply({ embeds: [errorEmbed('Maximum 25 options.')] });
+    const pollData = {
+      guildId: guild.id, channelId: msg.channel.id, options, ping: 'none', description: desc || null,
+      counts: new Array(options.length).fill(0), voters: new Map(),
+      authorId: member.id, endsAt: null, createdBy: member.displayName,
+    };
+    const select = new StringSelectMenuBuilder().setCustomId('vote').setPlaceholder('Cast your vote...')
+      .addOptions(options.map((o, i) => ({ label: o.length > 100 ? o.slice(0, 97) + '...' : o, value: String(i) })));
+    const m = await msg.channel.send({ embeds: [buildPollEmbed(pollData, member.displayName)], components: [new ActionRowBuilder().addComponents(select)] });
+    cache.set(m.id, pollData);
+    savePoll(m.id, pollData);
+    return;
+  }
+
+  if (cmd === 'entervc') {
+    if (!modError(PermissionFlagsBits.Connect)) return;
+    const channel = msg.member.voice.channel;
+    if (!channel) return msg.reply({ embeds: [errorEmbed('You are not in a voice channel.')] });
+    const existing = getVoiceConnection(guild.id);
+    if (existing) existing.destroy();
+    try {
+      const connection = joinVoiceChannel({
+        channelId: channel.id,
+        guildId: channel.guild.id,
+        adapterCreator: channel.guild.voiceAdapterCreator,
+      });
+      await entersState(connection, VoiceConnectionStatus.Ready, 10000);
+      await msg.reply({ embeds: [smallEmbed(`\uD83D\uDD0A Joined **${channel.name}**`)] });
+    } catch {
+      await msg.reply({ embeds: [errorEmbed('Failed to join the voice channel.')] });
+    }
+    return;
+  }
+
+  if (cmd === 'leavevc') {
+    const connection = getVoiceConnection(guild.id);
+    if (connection) {
+      const name = guild.channels.cache.get(connection.joinConfig.channelId)?.name || 'voice channel';
+      connection.destroy();
+      await msg.reply({ embeds: [smallEmbed(`\uD83D\uDD07 Left **${name}**`)] });
+    } else {
+      await msg.reply({ embeds: [errorEmbed('Bot is not in any voice channel.')] });
+    }
+    return;
+  }
+
+  if (cmd === 'nick') {
+    if (member.id !== OWNER_ID) return msg.reply({ embeds: [errorEmbed('Owner only.')] });
+    const target = await modTarget();
+    if (!target) return;
+    const name = args.slice(1).join(' ');
+    const tMember = await getMember(guild, target.id);
+    if (!tMember) return msg.reply({ embeds: [errorEmbed('User is not in the server.')] });
+    await tMember.setNickname(name);
+    await msg.reply({ embeds: [smallEmbed(`Nickname changed to **${name}**.`)] });
+    return;
+  }
+
+  if (cmd === 'say') {
+    if (member.id !== OWNER_ID) return msg.reply({ embeds: [errorEmbed('Owner only.')] });
+    const text = args.join(' ');
+    if (!text) return msg.reply({ embeds: [errorEmbed('Usage: `,say <message>`')] });
+    await msg.channel.send(text);
+    return;
+  }
+
+  if (cmd === 'roleall') {
+    if (member.id !== OWNER_ID) return msg.reply({ embeds: [errorEmbed('Owner only.')] });
+    const roleName = args.join(' ');
+    let role = guild.roles.cache.find(r => r.name.toLowerCase() === roleName.toLowerCase() || r.id === roleName);
+    if (!role) return msg.reply({ embeds: [errorEmbed('Role not found.')] });
+    if (role.managed) return msg.reply({ embeds: [errorEmbed('Cannot give managed roles.')] });
+    await msg.reply({ embeds: [smallEmbed(`Giving role **${role.name}** to all members...`)] });
+    const membersList = await guild.members.fetch();
+    let success = 0, fail = 0;
+    for (const [, m] of membersList) {
+      try { if (!m.roles.cache.has(role.id)) { await m.roles.add(role.id); success++; } } catch { fail++; }
+    }
+    await msg.channel.send({ embeds: [smallEmbed(`Given **${role.name}** to **${success}** members.${fail ? ` Failed: ${fail}` : ''}`)] });
+    return;
+  }
+
+  if (cmd === 'removeall') {
+    if (member.id !== OWNER_ID) return msg.reply({ embeds: [errorEmbed('Owner only.')] });
+    const roleName = args.join(' ');
+    let role = guild.roles.cache.find(r => r.name.toLowerCase() === roleName.toLowerCase() || r.id === roleName);
+    if (!role) return msg.reply({ embeds: [errorEmbed('Role not found.')] });
+    if (role.managed) return msg.reply({ embeds: [errorEmbed('Cannot remove managed roles.')] });
+    await msg.reply({ embeds: [smallEmbed(`Removing role **${role.name}** from all members...`)] });
+    const membersList = await guild.members.fetch();
+    let success = 0, fail = 0;
+    for (const [, m] of membersList) {
+      try { if (m.roles.cache.has(role.id)) { await m.roles.remove(role.id); success++; } } catch { fail++; }
+    }
+    await msg.channel.send({ embeds: [smallEmbed(`Removed **${role.name}** from **${success}** members.${fail ? ` Failed: ${fail}` : ''}`)] });
+    return;
+  }
+
+  if (cmd === 'emoji') {
+    if (member.id !== OWNER_ID) return msg.reply({ embeds: [errorEmbed('Owner only.')] });
+    const name = args[0];
+    const url = args[1];
+    if (!name || !url) return msg.reply({ embeds: [errorEmbed('Usage: `,emoji <name> <image_url>`')] });
+    try {
+      await guild.emojis.create({ name, attachment: url });
+      await msg.reply({ embeds: [smallEmbed(`Emoji **:${name}:** created.`)] });
+    } catch { await msg.reply({ embeds: [errorEmbed('Failed to create emoji. Check URL and name.')] }); }
+    return;
+  }
+
+  if (cmd === 'setlog') {
+    if (!modError(PermissionFlagsBits.ManageGuild)) return;
+    const channel = msg.mentions.channels.first() || msg.channel;
+    ensureConfig(guild.id);
+    setConfig(guild.id, 'log_channel_id', channel.id);
+    await msg.reply({ embeds: [smallEmbed(`Log channel set to ${channel}.`)] });
+    return;
+  }
+
+  if (cmd === 'tagchannel') {
+    if (!modError(PermissionFlagsBits.ManageGuild)) return;
+    const channel = msg.mentions.channels.first();
+    if (channel) {
+      ensureConfig(guild.id);
+      setConfig(guild.id, 'tag_channel_id', channel.id);
+      await msg.reply({ embeds: [smallEmbed(`Tag channel set to ${channel}.`)] });
+    } else {
+      const current = db.prepare('SELECT tag_channel_id FROM config WHERE guild_id = ?').get(guild.id)?.tag_channel_id;
+      if (current) { setConfig(guild.id, 'tag_channel_id', null); return msg.reply({ embeds: [smallEmbed('Tag channel disabled.')] }); }
+      await msg.reply({ embeds: [errorEmbed('Mention a channel or use without mention to disable.')] });
+    }
+    return;
+  }
+
+  if (cmd === 'settings') {
+    const ws = db.prepare('SELECT * FROM warn_settings WHERE guild_id = ?').get(guild.id);
+    const logChanId = db.prepare('SELECT log_channel_id FROM config WHERE guild_id = ?').get(guild.id);
+    const banWords = db.prepare('SELECT word FROM word_filters WHERE guild_id = ? AND action = \'ban\'').all(guild.id);
+    const muteWords = db.prepare('SELECT word FROM word_filters WHERE guild_id = ? AND action = \'mute\'').all(guild.id);
+    const activePolls = [...cache.values()].filter(p => p.guildId === guild.id).length;
+    const lines = [
+      `**Polls** \u2014 ${activePolls} active`,
+      `**Log Channel** \u2014 ${logChanId ? `<#${logChanId.log_channel_id}>` : 'Not set'}`,
+      '',
+      `**Warn Settings**`,
+      `  Max warns: **${ws?.max_warns || 5}**`,
+      `  Action: **${ws?.action || 'kick'}**${ws?.action === 'mute' ? ` (${ws?.mute_duration || '1h'})` : ''}`,
+      '',
+      `**Word Filters**`,
+      `  Ban words: **${banWords.length}**`,
+      `  Mute words: **${muteWords.length}**`,
+    ];
+    await msg.reply({ embeds: [embed('Bot Settings', lines.join('\n'))] });
+    return;
+  }
+
+  if (cmd === 'activepolls') {
+    const list = [...cache.entries()].filter(([_, p]) => p.guildId === guild.id);
+    if (list.length === 0) return msg.reply({ embeds: [smallEmbed('No active polls.')] });
+    const lines = list.map(([id, p]) => {
+      const total = p.counts.reduce((a, b) => a + b, 0);
+      const remain = p.endsAt ? discordTimestamp(p.endsAt) : 'no limit';
+      return `**${p.options.join(', ')}** \u2014 ${total} vote${total !== 1 ? 's' : ''} (ends ${remain})`;
+    });
+    await msg.reply({ embeds: [embed(`Active Polls (${list.length})`, lines.join('\n\n'))] });
+    return;
+  }
+
+  if (cmd === 'history') {
+    const rows = db.prepare('SELECT * FROM history WHERE guild_id = ? ORDER BY id DESC LIMIT 10').all(guild.id);
+    if (rows.length === 0) return msg.reply({ embeds: [smallEmbed('No poll history.')] });
+    const lines = rows.map(r => {
+      const opts = JSON.parse(r.options);
+      const counts = JSON.parse(r.counts);
+      const total = counts.reduce((a, b) => a + b, 0);
+      const details = opts.map((o, j) => `  ${j + 1}. ${o} \u2014 ${counts[j]} votes`).join('\n');
+      return `**#${r.id}** \u2014 **${r.winner}** (${total} votes)\n${details}\nBy ${r.created_by || 'Unknown'}`;
+    });
+    await msg.reply({ embeds: [embed('Poll History (Last 10)', lines.join('\n\n'))] });
+    return;
+  }
+
+  if (cmd === 'subscribe') {
+    const existing = db.prepare('SELECT user_id FROM subscribers WHERE user_id = ? AND guild_id = ?').get(member.id, guild.id);
+    if (existing) {
+      db.prepare('DELETE FROM subscribers WHERE user_id = ? AND guild_id = ?').run(member.id, guild.id);
+      await msg.reply({ embeds: [smallEmbed('DM notifications disabled.')] });
+    } else {
+      db.prepare('INSERT OR REPLACE INTO subscribers (user_id, guild_id) VALUES (?, ?)').run(member.id, guild.id);
+      await msg.reply({ embeds: [smallEmbed('DM notifications enabled.')] });
+    }
+    return;
+  }
+
+  if (cmd === 'warncount') {
+    if (!modError(PermissionFlagsBits.Administrator)) return;
+    const count = parseInt(args[0]);
+    if (!count || count < 1 || count > 100) return msg.reply({ embeds: [errorEmbed('Count must be 1-100.')] });
+    db.prepare('INSERT OR REPLACE INTO warn_settings (guild_id, max_warns, action, mute_duration) VALUES (?,?,COALESCE((SELECT action FROM warn_settings WHERE guild_id = ?),\'kick\'),COALESCE((SELECT mute_duration FROM warn_settings WHERE guild_id = ?),\'1h\'))')
+      .run(guild.id, count, guild.id, guild.id);
+    await msg.reply({ embeds: [smallEmbed(`Max warns set to **${count}**.`)] });
+    return;
+  }
+
+  if (cmd === 'warnsetting') {
+    if (!modError(PermissionFlagsBits.Administrator)) return;
+    const action = args[0]?.toLowerCase();
+    const duration = args[1];
+    if (!action || !['kick', 'ban', 'mute'].includes(action)) return msg.reply({ embeds: [errorEmbed('Usage: `,warnsetting <kick|ban|mute> [duration]`')] });
+    if (action === 'mute' && !duration) return msg.reply({ embeds: [errorEmbed('Provide a mute duration (e.g., 1h, 30m, 1d).')] });
+    if (duration && !getTimeSeconds(duration)) return msg.reply({ embeds: [errorEmbed('Invalid duration. Use e.g., 1h, 30m, 1d.')] });
+    db.prepare('INSERT OR REPLACE INTO warn_settings (guild_id, max_warns, action, mute_duration) VALUES (?,COALESCE((SELECT max_warns FROM warn_settings WHERE guild_id = ?),5),?,?)')
+      .run(guild.id, guild.id, action, duration || '1h');
+    let desc = `Action set to **${action}**`;
+    if (action === 'mute') desc += ` for **${duration || '1h'}**`;
+    await msg.reply({ embeds: [smallEmbed(desc)] });
+    return;
+  }
+
+  if (cmd === 'addword') {
+    if (!modError(PermissionFlagsBits.ManageMessages)) return;
+    const trigger = args[0]?.toLowerCase();
+    const response = args.slice(1).join(' ');
+    if (!trigger || !response) return msg.reply({ embeds: [errorEmbed('Usage: `,addword <trigger> <response>`')] });
+    if (trigger.length < 2) return msg.reply({ embeds: [errorEmbed('Trigger must be at least 2 characters.')] });
+    db.prepare('INSERT OR REPLACE INTO auto_replies VALUES (?,?,?)').run(guild.id, trigger, response);
+    await msg.reply({ embeds: [smallEmbed(`Auto-reply added: **${trigger}** \u2192 ${response}`)] });
+    return;
+  }
+}
   }
 
   // ── Return if user has ManageMessages (bypass auto-mod) ──
