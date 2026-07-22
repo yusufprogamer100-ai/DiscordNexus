@@ -13,6 +13,8 @@ function errorEmbed(msg) {
 }
 
 function checkPerms(member, perm) {
+  if (!member) return false;
+  if (perm === null || perm === undefined) return true;
   return member.permissions.has(perm);
 }
 

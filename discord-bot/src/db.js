@@ -15,6 +15,7 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS word_filters (guild_id TEXT, word TEXT, action TEXT, PRIMARY KEY (guild_id, word));
   CREATE TABLE IF NOT EXISTS mute_settings (guild_id TEXT PRIMARY KEY, duration TEXT DEFAULT '1h');
   CREATE TABLE IF NOT EXISTS auto_replies (guild_id TEXT, trigger TEXT, response TEXT, PRIMARY KEY (guild_id, trigger));
+  CREATE TABLE IF NOT EXISTS user_permissions (guild_id TEXT, user_id TEXT, command_name TEXT, enabled INTEGER DEFAULT 1, PRIMARY KEY (guild_id, user_id, command_name));
 `);
 
 // ── Schema migrations for new features ──
@@ -32,6 +33,15 @@ try { db.exec('ALTER TABLE config ADD COLUMN long_msg_warns INTEGER DEFAULT 2');
 try { db.exec('ALTER TABLE config ADD COLUMN long_msg_mute INTEGER DEFAULT 3600'); } catch {}
 try { db.exec('ALTER TABLE config ADD COLUMN long_msg_action TEXT DEFAULT "mute"'); } catch {}
 try { db.exec('ALTER TABLE word_filters ADD COLUMN duration TEXT DEFAULT NULL'); } catch {}
+try { db.exec('ALTER TABLE config ADD COLUMN lock_command_enabled INTEGER DEFAULT 1'); } catch {}
+try { db.exec('ALTER TABLE config ADD COLUMN ban_command_enabled INTEGER DEFAULT 1'); } catch {}
+try { db.exec('ALTER TABLE config ADD COLUMN warn_command_enabled INTEGER DEFAULT 1'); } catch {}
+try { db.exec('ALTER TABLE config ADD COLUMN kick_command_enabled INTEGER DEFAULT 1'); } catch {}
+try { db.exec('ALTER TABLE config ADD COLUMN mute_command_enabled INTEGER DEFAULT 1'); } catch {}
+try { db.exec('ALTER TABLE config ADD COLUMN timeout_command_enabled INTEGER DEFAULT 1'); } catch {}
+try { db.exec('ALTER TABLE config ADD COLUMN untimeout_command_enabled INTEGER DEFAULT 1'); } catch {}
+try { db.exec('ALTER TABLE config ADD COLUMN role_command_enabled INTEGER DEFAULT 1'); } catch {}
+try { db.exec('ALTER TABLE config ADD COLUMN slowmode_command_enabled INTEGER DEFAULT 1'); } catch {}
 
 // ── New feature tables ──
 db.exec(`
@@ -45,6 +55,7 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS giveaways (message_id TEXT PRIMARY KEY, guild_id TEXT, channel_id TEXT, prize TEXT, winners INTEGER, ends_at INTEGER, host_id TEXT, entries TEXT);
   CREATE TABLE IF NOT EXISTS mod_roles (guild_id TEXT, role_id TEXT, permissions TEXT DEFAULT '{}', PRIMARY KEY (guild_id, role_id));
   CREATE TABLE IF NOT EXISTS command_permissions (guild_id TEXT, command_name TEXT, allowed_roles TEXT DEFAULT '[]', PRIMARY KEY (guild_id, command_name));
+  CREATE TABLE IF NOT EXISTS user_permissions (guild_id TEXT, user_id TEXT, command_name TEXT, enabled INTEGER DEFAULT 1, PRIMARY KEY (guild_id, user_id, command_name));
   CREATE TABLE IF NOT EXISTS log_settings (guild_id TEXT, log_type TEXT, enabled INTEGER DEFAULT 1, channel_id TEXT, PRIMARY KEY (guild_id, log_type));
   CREATE TABLE IF NOT EXISTS keyword_logs (guild_id TEXT, trigger TEXT, PRIMARY KEY (guild_id, trigger));
 `);

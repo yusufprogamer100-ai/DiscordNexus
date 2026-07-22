@@ -420,6 +420,35 @@ async function handlePrefix(msg) {
     return user;
   }
 
+  function isCommandEnabled(guildId, command) {
+    const mapping = {
+      'lock': 'lock_command_enabled',
+      'ban': 'ban_command_enabled',
+      'warn': 'warn_command_enabled',
+      'kick': 'kick_command_enabled',
+      'mute': 'mute_command_enabled',
+      'untimeout': 'untimeout_command_enabled',
+      'timeout': 'timeout_command_enabled',
+      'role': 'role_command_enabled',
+      'slowmode': 'slowmode_command_enabled',
+    };
+    const column = mapping[command] || 'kick_command_enabled';
+    const cfg = db.prepare('SELECT ? FROM config WHERE guild_id = ?').get(column, guildId) || {};
+    return cfg[column] !== 0;
+  }
+
+  function getCommandPermissionList(guildId) {
+    const commands = [];
+    for (const key of db.prepare('PRAGMA table_info(config)').all()) {
+      if (key.name.endsWith('_command_enabled')) {
+        const cmdName = key.name.replace('_command_enabled', '');
+        const cfg = db.prepare('SELECT ? FROM config WHERE guild_id = ?').get(key.name, guildId) || {};
+        if (cfg[key.name] === 0) commands.push(cmdName);
+      }
+    }
+    return commands;
+  }
+
   // â”€â”€ Warn â”€â”€
   if (cmd === 'warn') {
     if (!modError(PermissionFlagsBits.ModerateMembers)) return;
@@ -1721,6 +1750,12 @@ function panelPermissions(interaction) {
         ...(access ? [new ButtonBuilder().setCustomId('panel_act_setcmdperm').setLabel('\uD83D\uDD11 Set Command Access').setStyle(ButtonStyle.Primary)] : []),
       ),
       new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId('panel_act_userperm_lock').setLabel('\uD83D\uDD10 Lock Command').setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId('panel_act_userperm_ban').setLabel('\uD83D\uDD28 Ban Command').setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId('panel_act_userperm_warn').setLabel('\u26A0\uFE0F Warn Command').setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId('panel_act_userperm_other').setLabel('\uD83D\uDD11 Other Commands').setStyle(ButtonStyle.Secondary),
+      ),
+      new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId('panel_main').setLabel('\u2190 Back').setStyle(ButtonStyle.Secondary),
       ),
     ],
@@ -1939,6 +1974,117 @@ async function handlePanelButton(interaction) {
     ensureConfig(interaction.guildId);
     setConfig(interaction.guildId, 'long_msg_action', newVal);
     await interaction.update(panelAntiSpam(interaction));
+  }
+
+  if (id === 'panel_act_userperm_lock') {
+    ensureConfig(interaction.guildId);
+    const cfg = db.prepare('SELECT lock_command_enabled FROM config WHERE guild_id = ?').get(interaction.guildId) || {};
+    const newVal = cfg.lock_command_enabled !== 0 ? 0 : 1;
+    setConfig(interaction.guildId, 'lock_command_enabled', newVal);
+    await interaction.update(panelPermissions(interaction));
+  }
+
+  if (id === 'panel_act_userperm_ban') {
+    ensureConfig(interaction.guildId);
+    const cfg = db.prepare('SELECT ban_command_enabled FROM config WHERE guild_id = ?').get(interaction.guildId) || {};
+    const newVal = cfg.ban_command_enabled !== 0 ? 0 : 1;
+    setConfig(interaction.guildId, 'ban_command_enabled', newVal);
+    await interaction.update(panelPermissions(interaction));
+  }
+
+  if (id === 'panel_act_userperm_warn') {
+    ensureConfig(interaction.guildId);
+    const cfg = db.prepare('SELECT warn_command_enabled FROM config WHERE guild_id = ?').get(interaction.guildId) || {};
+    const newVal = cfg.warn_command_enabled !== 0 ? 0 : 1;
+    setConfig(interaction.guildId, 'warn_command_enabled', newVal);
+    await interaction.update(panelPermissions(interaction));
+  }
+
+  if (id === 'panel_act_userperm_other') {
+    return interaction.showModal(createModal('modal_userperm_other', 'User Permissions for Multiple Commands', [
+      { id: 'user', label: 'Target User (mention or user ID)', placeholder: '@user or 123456789', min: 1, max: 50 },
+      { id: 'lock', label: 'Lock Command (l)', placeholder: '1=enabled, 0=disabled', min: 0, max: 1 },
+      { id: 'ban', label: 'Ban Command (b)', placeholder: '1=enabled, 0=disabled', min: 0, max: 1 },
+      { id: 'warn', label: 'Warn Command (w)', placeholder: '1=enabled, 0=disabled', min: 0, max: 1 },
+      { id: 'kick', label: 'Kick Command (k)', placeholder: '1=enabled, 0=disabled', min: 0, max: 1 },
+      { id: 'mute', label: 'Mute Command (m)', placeholder: '1=enabled, 0=disabled', min: 0, max: 1 },
+      { id: 'untimeout', label: 'Unmute Command (ut)', placeholder: '1=enabled, 0=disabled', min: 0, max: 1 },
+      { id: 'role', label: 'Role Command (r)', placeholder: '1=enabled, 0=disabled', min: 0, max: 1 },
+      { id: 'slowmode', label: 'Slowmode Command (sm)', placeholder: '1=enabled, 0=disabled', min: 0, max: 1 },
+    ]));
+  }
+
+  if (id === 'modal_userperm_other') {
+    if (!access) return interaction.reply({ content: 'You do not have permission to modify settings.', ephemeral: true });
+    const userArg = interaction.fields.getTextInputValue('user');
+    const userId = userArg.startsWith('<@') ? userArg.replace(/[<@!>]/g, '') : userArg;
+    const user = await client.users.fetch(userId).catch(() => null);
+    if (!user) return interaction.reply({ content: 'Could not find that user.', ephemeral: true });
+    
+    const lock = interaction.fields.getTextInputValue('lock') === '1';
+    const ban = interaction.fields.getTextInputValue('ban') === '1';
+    const warn = interaction.fields.getTextInputValue('warn') === '1';
+    const kick = interaction.fields.getTextInputValue('kick') === '1';
+    const mute = interaction.fields.getTextInputValue('mute') === '1';
+    const timeout = interaction.fields.getTextInputValue('untimeout') === '1';
+    const role = interaction.fields.getTextInputValue('role') === '1';
+    const slowmode = interaction.fields.getTextInputValue('slowmode') === '1';
+    
+    ensureConfig(interaction.guildId);
+    setUserCommandPermission(interaction.guildId, user.id, 'lock', lock ? 1 : 0);
+    setUserCommandPermission(interaction.guildId, user.id, 'ban', ban ? 1 : 0);
+    setUserCommandPermission(interaction.guildId, user.id, 'warn', warn ? 1 : 0);
+    setUserCommandPermission(interaction.guildId, user.id, 'kick', kick ? 1 : 0);
+    setUserCommandPermission(interaction.guildId, user.id, 'mute', mute ? 1 : 0);
+    setUserCommandPermission(interaction.guildId, user.id, 'untimeout', timeout ? 1 : 0);
+    setUserCommandPermission(interaction.guildId, user.id, 'role', role ? 1 : 0);
+    setUserCommandPermission(interaction.guildId, user.id, 'slowmode', slowmode ? 1 : 0);
+    
+    await interaction.reply({ content: 'User permissions updated for ' + user.tag + '!', ephemeral: true });
+    await interaction.update(panelPermissions(interaction));
+  }
+
+  if (id === 'modal_userperm') {
+    if (!access) return interaction.reply({ content: 'You do not have permission to modify settings.', ephemeral: true });
+    const enabled = interaction.fields.getTextInputValue('enabled') === '1';
+    
+    const modalId = interaction.customId;
+    if (modalId === 'modal_userperm') {
+      setUserCommandPermission(interaction.guildId, interaction.user.id, 'lock', enabled ? 1 : 0);
+      await interaction.update(panelPermissions(interaction));
+      await interaction.reply({ content: `Lock command permission ${enabled ? 'enabled' : 'disabled'}!`, ephemeral: true });
+    }
+  }
+  }
+
+  if (id === 'modal_userperm_other') {
+    if (!access) return interaction.reply({ content: 'You do not have permission to modify settings.', ephemeral: true });
+    const userArg = interaction.fields.getTextInputValue('user');
+    const userId = userArg.startsWith('<@') ? userArg.replace(/[<@!>]/g, '') : userArg;
+    const user = await client.users.fetch(userId).catch(() => null);
+    if (!user) return interaction.reply({ content: 'Could not find that user.', ephemeral: true });
+    
+    const lock = interaction.fields.getTextInputValue('lock') === '1';
+    const ban = interaction.fields.getTextInputValue('ban') === '1';
+    const warn = interaction.fields.getTextInputValue('warn') === '1';
+    const kick = interaction.fields.getTextInputValue('kick') === '1';
+    const mute = interaction.fields.getTextInputValue('mute') === '1';
+    const timeout = interaction.fields.getTextInputValue('untimeout') === '1';
+    const role = interaction.fields.getTextInputValue('role') === '1';
+    const slowmode = interaction.fields.getTextInputValue('slowmode') === '1';
+    
+    ensureConfig(interaction.guildId);
+    setUserCommandPermission(interaction.guildId, user.id, 'lock', lock ? 1 : 0);
+    setUserCommandPermission(interaction.guildId, user.id, 'ban', ban ? 1 : 0);
+    setUserCommandPermission(interaction.guildId, user.id, 'warn', warn ? 1 : 0);
+    setUserCommandPermission(interaction.guildId, user.id, 'kick', kick ? 1 : 0);
+    setUserCommandPermission(interaction.guildId, user.id, 'mute', mute ? 1 : 0);
+    setUserCommandPermission(interaction.guildId, user.id, 'untimeout', timeout ? 1 : 0);
+    setUserCommandPermission(interaction.guildId, user.id, 'role', role ? 1 : 0);
+    setUserCommandPermission(interaction.guildId, user.id, 'slowmode', slowmode ? 1 : 0);
+    
+    await interaction.reply({ content: 'User permissions updated for ' + user.tag + '!', ephemeral: true });
+    await interaction.update(panelPermissions(interaction));
   }
 
   if (id === 'panel_act_log_reset') {
@@ -2243,9 +2389,14 @@ function getModRoles(guildId) {
 }
 
 function canAccessCommand(member, command) {
+  if (!member || !member.guild) return false;
   if (member.id === OWNER_ID) return true;
+  
+  const userPermRow = db.prepare('SELECT enabled FROM user_permissions WHERE guild_id = ? AND user_id = ? AND command_name = ?').get(member.guild.id, member.id, command);
+  if (userPermRow !== undefined) return userPermRow.enabled === 1;
+  
   const row = db.prepare('SELECT allowed_roles FROM command_permissions WHERE guild_id = ? AND command_name = ?').get(member.guild.id, command);
-  if (!row) return false;
+  if (!row) return true;
   const roles = JSON.parse(row.allowed_roles || '[]');
   return roles.some(rId => member.roles.cache.has(rId));
 }
@@ -2257,6 +2408,19 @@ function getCommandAccess(guildId, command) {
 
 function setCommandAccess(guildId, command, roles) {
   db.prepare('INSERT OR REPLACE INTO command_permissions VALUES (?,?,?)').run(guildId, command, JSON.stringify(roles));
+}
+
+function getUserCommandPermission(guildId, userId, command) {
+  const row = db.prepare('SELECT enabled FROM user_permissions WHERE guild_id = ? AND user_id = ? AND command_name = ?').get(guildId, userId, command);
+  return row ? row.enabled === 1 : true;
+}
+
+function setUserCommandPermission(guildId, userId, command, enabled) {
+  if (enabled) {
+    db.prepare('INSERT OR REPLACE INTO user_permissions (guild_id, user_id, command_name, enabled) VALUES (?,?,?,?)').run(guildId, userId, command, 1);
+  } else {
+    db.prepare('DELETE FROM user_permissions WHERE guild_id = ? AND user_id = ? AND command_name = ?').run(guildId, userId, command);
+  }
 }
 
 const slashCommands = [
