@@ -2000,6 +2000,24 @@ async function handlePanelButton(interaction) {
     await interaction.update(panelPermissions(interaction));
   }
 
+  if (id === 'panel_act_userperm_lock') {
+    await interaction.showModal(createModal('modal_userperm', 'Toggle Command Permission', [
+      { id: 'enabled', label: 'Enabled (1=allowed, 0=disabled)', placeholder: '1 or 0', min: 0, max: 1 },
+    ]));
+  }
+
+  if (id === 'panel_act_userperm_ban') {
+    await interaction.showModal(createModal('modal_userperm', 'Toggle Command Permission', [
+      { id: 'enabled', label: 'Enabled (1=allowed, 0=disabled)', placeholder: '1 or 0', min: 0, max: 1 },
+    ]));
+  }
+
+  if (id === 'panel_act_userperm_warn') {
+    await interaction.showModal(createModal('modal_userperm', 'Toggle Command Permission', [
+      { id: 'enabled', label: 'Enabled (1=allowed, 0=disabled)', placeholder: '1 or 0', min: 0, max: 1 },
+    ]));
+  }
+
   if (id === 'panel_act_userperm_other') {
     return interaction.showModal(createModal('modal_userperm_other', 'User Permissions for Multiple Commands', [
       { id: 'user', label: 'Target User (mention or user ID)', placeholder: '@user or 123456789', min: 1, max: 50 },
@@ -2014,47 +2032,13 @@ async function handlePanelButton(interaction) {
     ]));
   }
 
-  if (id === 'modal_userperm_other') {
-    if (!access) return interaction.reply({ content: 'You do not have permission to modify settings.', ephemeral: true });
-    const userArg = interaction.fields.getTextInputValue('user');
-    const userId = userArg.startsWith('<@') ? userArg.replace(/[<@!>]/g, '') : userArg;
-    const user = await client.users.fetch(userId).catch(() => null);
-    if (!user) return interaction.reply({ content: 'Could not find that user.', ephemeral: true });
-    
-    const lock = interaction.fields.getTextInputValue('lock') === '1';
-    const ban = interaction.fields.getTextInputValue('ban') === '1';
-    const warn = interaction.fields.getTextInputValue('warn') === '1';
-    const kick = interaction.fields.getTextInputValue('kick') === '1';
-    const mute = interaction.fields.getTextInputValue('mute') === '1';
-    const timeout = interaction.fields.getTextInputValue('untimeout') === '1';
-    const role = interaction.fields.getTextInputValue('role') === '1';
-    const slowmode = interaction.fields.getTextInputValue('slowmode') === '1';
-    
-    ensureConfig(interaction.guildId);
-    setUserCommandPermission(interaction.guildId, user.id, 'lock', lock ? 1 : 0);
-    setUserCommandPermission(interaction.guildId, user.id, 'ban', ban ? 1 : 0);
-    setUserCommandPermission(interaction.guildId, user.id, 'warn', warn ? 1 : 0);
-    setUserCommandPermission(interaction.guildId, user.id, 'kick', kick ? 1 : 0);
-    setUserCommandPermission(interaction.guildId, user.id, 'mute', mute ? 1 : 0);
-    setUserCommandPermission(interaction.guildId, user.id, 'untimeout', timeout ? 1 : 0);
-    setUserCommandPermission(interaction.guildId, user.id, 'role', role ? 1 : 0);
-    setUserCommandPermission(interaction.guildId, user.id, 'slowmode', slowmode ? 1 : 0);
-    
-    await interaction.reply({ content: 'User permissions updated for ' + user.tag + '!', ephemeral: true });
-    await interaction.update(panelPermissions(interaction));
-  }
-
   if (id === 'modal_userperm') {
     if (!access) return interaction.reply({ content: 'You do not have permission to modify settings.', ephemeral: true });
     const enabled = interaction.fields.getTextInputValue('enabled') === '1';
     
-    const modalId = interaction.customId;
-    if (modalId === 'modal_userperm') {
-      setUserCommandPermission(interaction.guildId, interaction.user.id, 'lock', enabled ? 1 : 0);
-      await interaction.update(panelPermissions(interaction));
-      await interaction.reply({ content: `Lock command permission ${enabled ? 'enabled' : 'disabled'}!`, ephemeral: true });
-    }
-  }
+    setUserCommandPermission(interaction.guildId, interaction.user.id, 'lock', enabled ? 1 : 0);
+    await interaction.update(panelPermissions(interaction));
+    await interaction.reply({ content: `Lock command permission ${enabled ? 'enabled' : 'disabled'}!`, ephemeral: true });
   }
 
   if (id === 'modal_userperm_other') {
