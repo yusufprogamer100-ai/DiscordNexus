@@ -26,7 +26,7 @@ const CLIENT_ID = process.env.CLIENT_ID || '1526982043857059981';
 const PREFIX = ',';
 const OWNER_ID = process.env.OWNER_ID || '1451684769061535826';
 
-console.log(`[BOOT] TOKEN loaded: ${TOKEN ? 'yes (len ' + TOKEN.length + ')' : 'NO'} | GUILD ${GUILD_ID}`);
+console.log(`[BOOT] TOKEN loaded: ${TOKEN ? 'yes (len ' + TOKEN.length + ') prefix ' + TOKEN.slice(0, 6) + ' suffix ' + TOKEN.slice(-6) : 'NO'} | GUILD ${GUILD_ID}`);
 
 const db = require('./src/db');
 const snipe = require('./src/snipe');
