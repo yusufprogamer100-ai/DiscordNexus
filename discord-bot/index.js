@@ -2900,18 +2900,9 @@ client.on('interactionCreate', async (interaction) => {
       const msgId = interaction.customId.slice('get_script_'.length);
       const s = scripts.get(msgId);
       if (!s) return interaction.reply({ content: 'This script is no longer available.', ephemeral: true });
-      const body = `**${s.name}**\n\n${s.script}`;
-      if (body.length <= 1950) {
-        await interaction.reply({ content: body, ephemeral: true });
-      } else {
-        await interaction.reply({ content: `**${s.name}**`, ephemeral: true });
-        let rest = s.script;
-        while (rest.length > 0) {
-          const chunk = rest.slice(0, 1950);
-          rest = rest.slice(1950);
-          await interaction.followUp({ content: chunk, ephemeral: true });
-        }
-      }
+      const safeName = (s.name || 'script').replace(/[^a-zA-Z0-9_\- ]/g, '').trim().replace(/\s+/g, '_') || 'script';
+      const file = new AttachmentBuilder(Buffer.from(s.script, 'utf8'), { name: `${safeName}.lua` });
+      await interaction.reply({ content: `**${s.name}**`, files: [file], ephemeral: true });
       return;
     }
     if (interaction.customId === 'giveaway_join') {
@@ -3153,11 +3144,12 @@ async function handleSlash(interaction) {
     const imageUrl = pastedImage ? pastedImage.url : null;
     if (!imageUrl) return interaction.reply({ content: 'Please attach a photo in the `image` field.', ephemeral: true });
     const uploadEmbed = new EmbedBuilder()
-      .setColor(0x2b2d31)
+      .setColor(0x5865F2)
+      .setAuthor({ name: interaction.user.displayName, iconURL: interaction.user.displayAvatarURL({ size: 64 }) })
       .setTitle(name)
-      .setDescription(`\uD83D\uDD25 **${name}**\n\nClick the **Get Script** button below to receive the script.`)
+      .setDescription(`**${name}**\n\nClick the **Get Script** button below to receive the script.`)
       .setImage(imageUrl)
-      .setFooter({ text: `Uploaded by ${interaction.user.displayName}` })
+      .setFooter({ text: 'NEXUS' })
       .setTimestamp();
     const row = new ActionRowBuilder().addComponents(
       new ButtonBuilder().setCustomId('get_script_placeholder').setLabel('Get Script').setStyle(ButtonStyle.Primary)
