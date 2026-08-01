@@ -20,11 +20,13 @@ try {
   }
 } catch {}
 
-const TOKEN = process.env.TOKEN;
+const TOKEN = (process.env.TOKEN || '').trim().replace(/^['"]|['"]$/g, '');
 const GUILD_ID = process.env.GUILD_ID || '1467153107837255734';
 const CLIENT_ID = process.env.CLIENT_ID || '1526982043857059981';
 const PREFIX = ',';
 const OWNER_ID = process.env.OWNER_ID || '1451684769061535826';
+
+console.log(`[BOOT] TOKEN loaded: ${TOKEN ? 'yes (len ' + TOKEN.length + ')' : 'NO'} | GUILD ${GUILD_ID}`);
 
 const db = require('./src/db');
 const snipe = require('./src/snipe');
