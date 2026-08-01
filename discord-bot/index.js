@@ -2900,9 +2900,14 @@ client.on('interactionCreate', async (interaction) => {
       const msgId = interaction.customId.slice('get_script_'.length);
       const s = scripts.get(msgId);
       if (!s) return interaction.reply({ content: 'This script is no longer available.', ephemeral: true });
-      const safeName = (s.name || 'script').replace(/[^a-zA-Z0-9_\- ]/g, '').trim().replace(/\s+/g, '_') || 'script';
-      const file = new AttachmentBuilder(Buffer.from(s.script, 'utf8'), { name: `${safeName}.lua` });
-      await interaction.reply({ content: `**${s.name}**`, files: [file], ephemeral: true });
+      const wrapped = `loadstring([[\n${s.script}\n]])()`;
+      if (wrapped.length <= 1950) {
+        await interaction.reply({ content: `**${s.name}**\n\n${wrapped}`, ephemeral: true });
+      } else {
+        const safeName = (s.name || 'script').replace(/[^a-zA-Z0-9_\- ]/g, '').trim().replace(/\s+/g, '_') || 'script';
+        const file = new AttachmentBuilder(Buffer.from(s.script, 'utf8'), { name: `${safeName}.lua` });
+        await interaction.reply({ content: `**${s.name}** (too long for chat, saved as file)`, files: [file], ephemeral: true });
+      }
       return;
     }
     if (interaction.customId === 'giveaway_join') {
