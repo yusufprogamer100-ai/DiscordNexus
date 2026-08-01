@@ -7,6 +7,19 @@
 
 const { joinVoiceChannel, getVoiceConnection, entersState, VoiceConnectionStatus } = require('@discordjs/voice');
 
+// Load .env if present (local dev). Railway/hosting inject vars via the environment.
+try {
+  const fs = require('fs');
+  const path = require('path');
+  const envFile = path.join(__dirname, '.env');
+  if (fs.existsSync(envFile)) {
+    for (const line of fs.readFileSync(envFile, 'utf8').split(/\r?\n/)) {
+      const m = line.match(/^\s*([\w.-]+)\s*=\s*(.*)\s*$/);
+      if (m && !process.env[m[1]]) process.env[m[1]] = m[2].trim();
+    }
+  }
+} catch {}
+
 const TOKEN = process.env.TOKEN;
 const GUILD_ID = process.env.GUILD_ID || '1467153107837255734';
 const CLIENT_ID = process.env.CLIENT_ID || '1526982043857059981';
