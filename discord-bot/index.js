@@ -29,6 +29,7 @@ const client = new Client({
 
 const cache = new Map();
 const giveaways = new Map();
+const scripts = new Map();
 const pendingRules = new Map(); // userId -> true, waiting for next message to save as rules
 const timers = new Map();
 const ticketLocks = new Set(); // userId -> lock to prevent duplicate ticket channels
@@ -2549,6 +2550,11 @@ const slashCommands = [
   { name: 'banner', description: 'Show a user banner', options: [
     { name: 'user', description: 'Target user', type: 6, required: false },
   ]},
+  { name: 'scriptupload', description: 'Upload a script with name, photo and Get Script button', options: [
+    { name: 'name', description: 'Script name', type: 3, required: true },
+    { name: 'script', description: 'Script content/code', type: 3, required: true },
+    { name: 'image', description: 'Image URL (or attach a photo to the command message)', type: 3, required: false },
+  ]},
 ];
 
 // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ CLIENT EVENTS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -2868,6 +2874,24 @@ client.on('interactionCreate', async (interaction) => {
       await interaction.reply({ embeds: [smallEmbed(`Ticket claimed by ${interaction.user}.`)] });
       return;
     }
+    if (interaction.customId.startsWith('get_script_')) {
+      const msgId = interaction.customId.slice('get_script_'.length);
+      const s = scripts.get(msgId);
+      if (!s) return interaction.reply({ content: 'This script is no longer available.', ephemeral: true });
+      const body = `**${s.name}**\n\n${s.script}`;
+      if (body.length <= 1950) {
+        await interaction.reply({ content: body, ephemeral: true });
+      } else {
+        await interaction.reply({ content: `**${s.name}**`, ephemeral: true });
+        let rest = s.script;
+        while (rest.length > 0) {
+          const chunk = rest.slice(0, 1950);
+          rest = rest.slice(1950);
+          await interaction.followUp({ content: chunk, ephemeral: true });
+        }
+      }
+      return;
+    }
     if (interaction.customId === 'giveaway_join') {
       const g = giveaways.get(interaction.message.id);
       if (!g) return interaction.reply({ content: 'This giveaway has ended.', ephemeral: true });
@@ -3094,6 +3118,37 @@ async function handleSlash(interaction) {
     content += `**${interaction.user.displayName}** announced the winner!\n\n**${winner}** \u2014 **${maxV}** votes`;
     await interaction.channel.send({ content });
     await interaction.reply({ content: 'Announcement sent.', ephemeral: true });
+  }
+
+  // Script upload (name top, photo middle, Get Script button bottom)
+  if (cmd === 'scriptupload') {
+    if (!hasPanelAccess(interaction.member)) return interaction.reply({ content: 'Owner/staff only.', ephemeral: true });
+    const name = (interaction.options.getString('name') || '').trim();
+    const script = interaction.options.getString('script') || '';
+    const link = interaction.options.getString('image');
+    if (!name) return interaction.reply({ content: 'Provide a script name.', ephemeral: true });
+    if (!script.trim()) return interaction.reply({ content: 'Provide the script content.', ephemeral: true });
+    const pastedImage = interaction.attachments.first();
+    const imageUrl = pastedImage
+      ? pastedImage.url
+      : (link && /^https?:\/\//i.test(link) ? link : null);
+    if (!imageUrl) return interaction.reply({ content: 'Please provide a photo: attach an image to the command message or paste a URL in the `image` field.', ephemeral: true });
+    const uploadEmbed = new EmbedBuilder()
+      .setColor(0x2b2d31)
+      .setTitle(name)
+      .setDescription(`\uD83D\uDD25 **${name}**\n\nClick the **Get Script** button below to receive the script.`)
+      .setImage(imageUrl)
+      .setFooter({ text: `Uploaded by ${interaction.user.displayName}` })
+      .setTimestamp();
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId('get_script_placeholder').setLabel('Get Script').setStyle(ButtonStyle.Primary)
+    );
+    const reply = await interaction.reply({ embeds: [uploadEmbed], components: [row], withResponse: true });
+    const msg = reply.resource.message;
+    row.components[0].setCustomId(`get_script_${msg.id}`);
+    await msg.edit({ components: [row] });
+    scripts.set(msg.id, { name, script, guildId: interaction.guildId, authorId: interaction.user.id });
+    return;
   }
 
   // â”€â”€ Moderation slash commands â”€â”€
