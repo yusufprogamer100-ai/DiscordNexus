@@ -2568,7 +2568,7 @@ const slashCommands = [
   { name: 'scriptupload', description: 'Upload a script with name, photo and Get Script button', options: [
     { name: 'name', description: 'Script name', type: 3, required: true },
     { name: 'script', description: 'Script content/code', type: 3, required: true },
-    { name: 'image', description: 'Image URL (or attach a photo to the command message)', type: 3, required: false },
+    { name: 'image', description: 'Upload a photo for the script showcase', type: 11, required: false },
   ]},
 ];
 
@@ -2789,7 +2789,14 @@ client.on('emojiUpdate', (oldEmoji, newEmoji) => {
 
 client.on('interactionCreate', async (interaction) => {
   if (interaction.isChatInputCommand()) {
-    await handleSlash(interaction);
+    try {
+      await handleSlash(interaction);
+    } catch (e) {
+      console.error('[SLASH]', e);
+      if (!interaction.replied && !interaction.deferred) {
+        await interaction.reply({ content: 'Something went wrong while running this command.', ephemeral: true }).catch(() => {});
+      }
+    }
     return;
   }
   if (interaction.isButton()) {
@@ -3140,14 +3147,11 @@ async function handleSlash(interaction) {
     if (!hasPanelAccess(interaction.member)) return interaction.reply({ content: 'Owner/staff only.', ephemeral: true });
     const name = (interaction.options.getString('name') || '').trim();
     const script = interaction.options.getString('script') || '';
-    const link = interaction.options.getString('image');
     if (!name) return interaction.reply({ content: 'Provide a script name.', ephemeral: true });
     if (!script.trim()) return interaction.reply({ content: 'Provide the script content.', ephemeral: true });
-    const pastedImage = interaction.attachments.first();
-    const imageUrl = pastedImage
-      ? pastedImage.url
-      : (link && /^https?:\/\//i.test(link) ? link : null);
-    if (!imageUrl) return interaction.reply({ content: 'Please provide a photo: attach an image to the command message or paste a URL in the `image` field.', ephemeral: true });
+    const pastedImage = interaction.options.getAttachment('image');
+    const imageUrl = pastedImage ? pastedImage.url : null;
+    if (!imageUrl) return interaction.reply({ content: 'Please attach a photo in the `image` field.', ephemeral: true });
     const uploadEmbed = new EmbedBuilder()
       .setColor(0x2b2d31)
       .setTitle(name)
